@@ -90,11 +90,10 @@ const ConfirmActionModal = ({
         }
       >
         <div
-          className={`lyl-modal-icon ${
-            isDanger
+          className={`lyl-modal-icon ${isDanger
               ? "danger"
               : ""
-          }`}
+            }`}
         >
           !
         </div>
@@ -119,19 +118,18 @@ const ConfirmActionModal = ({
 
           <button
             type="button"
-            className={`lyl-btn ${
-              isDanger
+            className={`lyl-btn ${isDanger
                 ? "lyl-btn-danger"
                 : "lyl-btn-primary"
-            }`}
+              }`}
             onClick={onConfirm}
             disabled={loading}
           >
             {loading
               ? loadingText ||
-                "Please wait..."
+              "Please wait..."
               : confirmText ||
-                "Confirm"}
+              "Confirm"}
           </button>
         </div>
       </div>
@@ -149,12 +147,11 @@ const AlertToast = ({
 
   return (
     <div
-      className={`lyl-toast ${
-        alertData.type ===
-        "success"
+      className={`lyl-toast ${alertData.type ===
+          "success"
           ? "success"
           : "error"
-      }`}
+        }`}
     >
       <div className="lyl-toast-content">
         <div className="lyl-toast-title">
@@ -371,47 +368,47 @@ const RoleAccessLayer = () => {
       : TZ;
   };
 
-const getBookDateValue = (
-  item
-) => {
-  /*
-   * Prefer bookteacher date.
-   *
-   * bookteacher date/time belongs to
-   * the student's booking timezone.
-   *
-   * Group session fields are fallback
-   * only.
-   */
-  return (
-    item?.bookdate ||
-    item?.booking_date ||
-    item?.group_session_date ||
-    ""
-  );
-};
+  const getBookDateValue = (
+    item
+  ) => {
+    /*
+     * Prefer bookteacher date.
+     *
+     * bookteacher date/time belongs to
+     * the student's booking timezone.
+     *
+     * Group session fields are fallback
+     * only.
+     */
+    return (
+      item?.bookdate ||
+      item?.booking_date ||
+      item?.group_session_date ||
+      ""
+    );
+  };
 
-const getSlotStartValue = (
-  item
-) => {
-  return (
-    item?.slot_start ||
-    item?.booking_start_time ||
-    item?.group_session_start ||
-    ""
-  );
-};
+  const getSlotStartValue = (
+    item
+  ) => {
+    return (
+      item?.slot_start ||
+      item?.booking_start_time ||
+      item?.group_session_start ||
+      ""
+    );
+  };
 
-const getSlotEndValue = (
-  item
-) => {
-  return (
-    item?.slot_end ||
-    item?.booking_end_time ||
-    item?.group_session_end ||
-    ""
-  );
-};
+  const getSlotEndValue = (
+    item
+  ) => {
+    return (
+      item?.slot_end ||
+      item?.booking_end_time ||
+      item?.group_session_end ||
+      ""
+    );
+  };
   const getBookingId = (
     item
   ) =>
@@ -440,37 +437,37 @@ const getSlotEndValue = (
      * Official group session date and time
      * are already stored in Asia/Dubai.
      */
-   /*
- * bookteacher.slot_start / slot_end are
- * stored in the student's booking timezone.
- *
- * Convert that source timezone to Dubai.
- *
- * Only use Dubai directly when there is no
- * bookteacher date/time and we have fallen
- * back to official group session fields.
- */
-const hasBookteacherDateTime =
-  Boolean(item?.bookdate) &&
-  Boolean(
-    type === "end"
-      ? item?.slot_end
-      : item?.slot_start
-  );
-
-const isGroup =
-  Number(
-    item?.is_group_booking ||
-      0
-  ) === 1;
-
-const sourceTimezone =
-  isGroup &&
-  !hasBookteacherDateTime
-    ? TZ
-    : getStudentTimezone(
-        item
+    /*
+  * bookteacher.slot_start / slot_end are
+  * stored in the student's booking timezone.
+  *
+  * Convert that source timezone to Dubai.
+  *
+  * Only use Dubai directly when there is no
+  * bookteacher date/time and we have fallen
+  * back to official group session fields.
+  */
+    const hasBookteacherDateTime =
+      Boolean(item?.bookdate) &&
+      Boolean(
+        type === "end"
+          ? item?.slot_end
+          : item?.slot_start
       );
+
+    const isGroup =
+      Number(
+        item?.is_group_booking ||
+        0
+      ) === 1;
+
+    const sourceTimezone =
+      isGroup &&
+        !hasBookteacherDateTime
+        ? TZ
+        : getStudentTimezone(
+          item
+        );
     const dateTimeValue =
       timeValue
         ? `${dateValue} ${timeValue}`
@@ -537,15 +534,15 @@ const sourceTimezone =
     const sourceTimezone =
       Number(
         item?.is_group_booking ||
-          0
+        0
       ) === 1 &&
-      Boolean(
-        item?.group_session_date
-      )
+        Boolean(
+          item?.group_session_date
+        )
         ? TZ
         : getStudentTimezone(
-            item
-          );
+          item
+        );
 
     const formats = [
       "YYYY-MM-DD",
@@ -595,8 +592,8 @@ const sourceTimezone =
 
     return dateTime?.isValid?.()
       ? dateTime.format(
-          "hh:mm A"
-        )
+        "hh:mm A"
+      )
       : "-";
   };
 
@@ -627,7 +624,7 @@ const sourceTimezone =
   ) =>
     Number(
       item?.is_group_booking ||
-        0
+      0
     ) === 1;
 
   const getGroupRole = (
@@ -653,13 +650,13 @@ const sourceTimezone =
       item?._group_assistant_teachers
     )
       ? item._group_assistant_teachers
-          .map(
-            (teacher) =>
-              teacher?.name ||
-              teacher?.teachername ||
-              ""
-          )
-          .filter(Boolean)
+        .map(
+          (teacher) =>
+            teacher?.name ||
+            teacher?.teachername ||
+            ""
+        )
+        .filter(Boolean)
       : [];
 
   const getMainTeacherText = (
@@ -1046,8 +1043,8 @@ const sourceTimezone =
         Array.isArray(
           item?._group_related_rows
         ) &&
-        item._group_related_rows
-          .length
+          item._group_related_rows
+            .length
           ? item._group_related_rows
           : [item];
 
@@ -1061,7 +1058,7 @@ const sourceTimezone =
           (row) =>
             Number(
               row?.is_cancelled ||
-                0
+              0
             ) === 1 ||
             norm(
               row
@@ -1123,7 +1120,7 @@ const sourceTimezone =
     if (
       Number(
         item?.is_cancelled ||
-          0
+        0
       ) === 1
     ) {
       return "cancelled";
@@ -1169,7 +1166,7 @@ const sourceTimezone =
           Number(
             item
               ?.has_teacher_feedback ||
-              0
+            0
           ) === 1;
 
         return hasRecording ||
@@ -1216,7 +1213,7 @@ const sourceTimezone =
         Number(
           item
             ?.has_teacher_feedback ||
-            0
+          0
         ) === 1;
 
       return hasRecording ||
@@ -1265,9 +1262,9 @@ const sourceTimezone =
     const startDateTime =
       startValue
         ? parseBookingDateTime(
-            item,
-            "start"
-          )
+          item,
+          "start"
+        )
         : null;
 
     if (startDateTime) {
@@ -1494,15 +1491,15 @@ const sourceTimezone =
         "group",
         item
           ?.group_programme_id ||
-          "na",
+        "na",
         item?.group_batch_id ||
-          "na",
+        "na",
         item
           ?.group_live_session_id ||
-          "na",
+        "na",
         item?.studentid ||
-          item?.studentname ||
-          "na",
+        item?.studentname ||
+        "na",
       ].join("|");
     }
 
@@ -1621,8 +1618,8 @@ const sourceTimezone =
             const teacherKey =
               String(
                 row?.teacherid ||
-                  row?.teachername ||
-                  ""
+                row?.teachername ||
+                ""
               ).trim();
 
             if (
@@ -1747,11 +1744,11 @@ const sourceTimezone =
     return (
       Number(
         getBookingId(second) ||
-          0
+        0
       ) -
       Number(
         getBookingId(first) ||
-          0
+        0
       )
     );
   };
@@ -2189,7 +2186,7 @@ const sourceTimezone =
           throw new Error(
             response?.data
               ?.message ||
-              "Booking could not be permanently deleted. No changes were saved."
+            "Booking could not be permanently deleted. No changes were saved."
           );
         }
 
@@ -2232,7 +2229,7 @@ const sourceTimezone =
           "Booking Deleted",
           response?.data
             ?.message ||
-            "Booking permanently deleted successfully."
+          "Booking permanently deleted successfully."
         );
       } catch (error) {
         const message =
@@ -2294,13 +2291,13 @@ const sourceTimezone =
                 row
               )
             ) ===
-            String(
-              bookingId
-            )
+              String(
+                bookingId
+              )
               ? {
-                  ...row,
-                  ...patch,
-                }
+                ...row,
+                ...patch,
+              }
               : row
         )
     );
@@ -2414,7 +2411,7 @@ const sourceTimezone =
         throw new Error(
           response?.data
             ?.message ||
-            "Update failed."
+          "Update failed."
         );
       }
 
@@ -2603,33 +2600,33 @@ const sourceTimezone =
 
       const previousValue =
         field ===
-        "payment_status"
+          "payment_status"
           ? getPaymentStatusDisplay(
-              item?.payment_status
-            )
+            item?.payment_status
+          )
           : field ===
             "session_type"
-          ? getSessionTypeDisplay(
+            ? getSessionTypeDisplay(
               item?.session_type
             )
-          : getAmountValue(
+            : getAmountValue(
               item
             );
 
       const optimisticPatch =
         field ===
-        "payment_status"
+          "payment_status"
           ? {
-              payment_status:
-                newValue,
-            }
+            payment_status:
+              newValue,
+          }
           : field ===
             "session_type"
-          ? {
+            ? {
               session_type:
                 newValue,
             }
-          : {
+            : {
               booking_amount:
                 newValue,
             };
@@ -2647,18 +2644,18 @@ const sourceTimezone =
           },
 
           field ===
-          "payment_status"
+            "payment_status"
             ? {
-                payment_status:
-                  newValue,
-              }
+              payment_status:
+                newValue,
+            }
             : field ===
               "session_type"
-            ? {
+              ? {
                 sessionType:
                   newValue,
               }
-            : {
+              : {
                 amount:
                   newValue,
               }
@@ -2689,18 +2686,18 @@ const sourceTimezone =
           bookingId,
 
           field ===
-          "payment_status"
+            "payment_status"
             ? {
-                payment_status:
-                  previousValue,
-              }
+              payment_status:
+                previousValue,
+            }
             : field ===
               "session_type"
-            ? {
+              ? {
                 session_type:
                   previousValue,
               }
-            : {
+              : {
                 booking_amount:
                   previousValue,
               }
@@ -2723,7 +2720,7 @@ const sourceTimezone =
           "error",
           "Update Failed",
           error?.message ||
-            "Something went wrong."
+          "Something went wrong."
         );
       } finally {
         setConfirmLoading(
@@ -2753,22 +2750,22 @@ const sourceTimezone =
           )
             ? response
             : Array.isArray(
-                response?.data
-              )
-            ? response.data
-            : Array.isArray(
+              response?.data
+            )
+              ? response.data
+              : Array.isArray(
                 response
                   ?.getall_bookings
               )
-            ? response
-                .getall_bookings
-            : Array.isArray(
-                response
-                  ?.getallbookings
-              )
-            ? response
-                .getallbookings
-            : [];
+                ? response
+                  .getall_bookings
+                : Array.isArray(
+                  response
+                    ?.getallbookings
+                )
+                  ? response
+                    .getallbookings
+                  : [];
 
         const consolidatedRows =
           consolidateBookings(
@@ -2976,21 +2973,21 @@ const sourceTimezone =
       const startMoment =
         startDate
           ? moment.tz(
-              startDate,
-              "YYYY-MM-DD",
-              true,
-              TZ
-            )
+            startDate,
+            "YYYY-MM-DD",
+            true,
+            TZ
+          )
           : null;
 
       const endMoment =
         endDate
           ? moment.tz(
-              endDate,
-              "YYYY-MM-DD",
-              true,
-              TZ
-            )
+            endDate,
+            "YYYY-MM-DD",
+            true,
+            TZ
+          )
           : null;
 
       return (
@@ -3003,17 +3000,17 @@ const sourceTimezone =
 
         const fullText = [
           item?.studentname ||
-            "",
+          "",
 
           item?.teachername ||
-            "",
+          "",
 
           ...getGroupAssistantNames(
             item
           ),
 
           item?.payment_type ||
-            "",
+          "",
 
           getResolvedPaymentStatus(
             item
@@ -3024,7 +3021,7 @@ const sourceTimezone =
           ),
 
           item?.booking_type ||
-            "",
+          "",
 
           getBookingCategory(
             item
@@ -3043,15 +3040,15 @@ const sourceTimezone =
           ),
 
           item?.group_batch_id ||
-            "",
+          "",
 
           item
             ?.group_programme_id ||
-            "",
+          "",
 
           item
             ?.group_live_session_id ||
-            "",
+          "",
 
           getAmountText(item),
 
@@ -3083,14 +3080,14 @@ const sourceTimezone =
           norm(
             item?.payment_type
           ) ===
-            normalizedPaymentType;
+          normalizedPaymentType;
 
         const matchesBookingStatus =
           !normalizedBookingStatus ||
           norm(
             bookingStatus
           ) ===
-            normalizedBookingStatus;
+          normalizedBookingStatus;
 
         const matchesPaymentStatus =
           !normalizedPaymentStatus ||
@@ -3099,32 +3096,32 @@ const sourceTimezone =
               item
             )
           ) ===
-            normalizedPaymentStatus;
+          normalizedPaymentStatus;
 
         const matchesSessionType =
           !normalizedSessionType ||
           getSessionTypeKey(
             item?.session_type
           ) ===
-            normalizedSessionType;
+          normalizedSessionType;
 
         const matchesBookingType =
           !normalizedBookingType ||
           norm(
             item?.booking_type
           ) ===
-            normalizedBookingType;
+          normalizedBookingType;
 
         const matchesGroupType =
           !normalizedGroup ||
           (
             normalizedGroup ===
-              "group" &&
+            "group" &&
             isGroupBooking(item)
           ) ||
           (
             normalizedGroup ===
-              "one-to-one" &&
+            "one-to-one" &&
             !isGroupBooking(
               item
             )
@@ -3134,11 +3131,11 @@ const sourceTimezone =
           !normalizedBatch ||
           String(
             item?.group_batch_id ||
-              ""
+            ""
           ) ===
-            String(
-              normalizedBatch
-            );
+          String(
+            normalizedBatch
+          );
 
         const itemDate =
           getDubaiBookDateMoment(
@@ -3149,9 +3146,9 @@ const sourceTimezone =
           startMoment
             ? itemDate
               ? itemDate.isSameOrAfter(
-                  startMoment,
-                  "day"
-                )
+                startMoment,
+                "day"
+              )
               : false
             : true;
 
@@ -3159,9 +3156,9 @@ const sourceTimezone =
           endMoment
             ? itemDate
               ? itemDate.isSameOrBefore(
-                  endMoment,
-                  "day"
-                )
+                endMoment,
+                "day"
+              )
               : false
             : true;
 
@@ -3195,7 +3192,7 @@ const sourceTimezone =
   const totalPages =
     Math.ceil(
       filteredData.length /
-        itemsPerPage
+      itemsPerPage
     ) || 1;
 
   const safePage = Math.min(
@@ -3258,8 +3255,8 @@ const sourceTimezone =
             "Book Date":
               bookingDate
                 ? bookingDate.format(
-                    "DD MMM YYYY"
-                  )
+                  "DD MMM YYYY"
+                )
                 : "-",
 
             "Student Name":
@@ -3330,9 +3327,9 @@ const sourceTimezone =
             Status:
               status
                 ? status
-                    .charAt(0)
-                    .toUpperCase() +
-                  status.slice(1)
+                  .charAt(0)
+                  .toUpperCase() +
+                status.slice(1)
                 : "-",
           };
         }
@@ -3418,12 +3415,12 @@ const sourceTimezone =
 
             bookingDate
               ? bookingDate.format(
-                  "DD MMM YYYY"
-                )
+                "DD MMM YYYY"
+              )
               : "-",
 
             item?.studentname ||
-              "-",
+            "-",
 
             getTeacherExportText(
               item
@@ -3442,7 +3439,7 @@ const sourceTimezone =
             getAmountText(item),
 
             item?.payment_type ||
-              "-",
+            "-",
 
             getResolvedPaymentStatus(
               item
@@ -3474,9 +3471,9 @@ const sourceTimezone =
 
             status
               ? status
-                  .charAt(0)
-                  .toUpperCase() +
-                status.slice(1)
+                .charAt(0)
+                .toUpperCase() +
+              status.slice(1)
               : "-",
           ];
         }
@@ -3947,16 +3944,14 @@ const sourceTimezone =
         message={
           deleteModal.item
             ? `This will permanently delete booking #${getBookingId(
-                deleteModal.item
-              )} for ${
-                deleteModal.item
-                  ?.studentname ||
-                "the student"
-              } with ${
-                deleteModal.item
-                  ?.teachername ||
-                "the teacher"
-              }. This action cannot be undone.`
+              deleteModal.item
+            )} for ${deleteModal.item
+              ?.studentname ||
+            "the student"
+            } with ${deleteModal.item
+              ?.teachername ||
+            "the teacher"
+            }. This action cannot be undone.`
             : "This booking will be permanently deleted. This action cannot be undone."
         }
         confirmText="Yes, Delete Permanently"
@@ -4478,7 +4473,7 @@ const sourceTimezone =
 
             <tbody>
               {currentItems.length ===
-              0 ? (
+                0 ? (
                 <tr>
                   <td
                     colSpan={16}
@@ -4583,11 +4578,10 @@ const sourceTimezone =
                         <td>
                           <button
                             type="button"
-                            className={`btn btn-sm ${
-                              rescheduleDisabled
+                            className={`btn btn-sm ${rescheduleDisabled
                                 ? "btn-outline-secondary"
                                 : "btn-outline-primary"
-                            }`}
+                              }`}
                             onClick={() => {
                               if (
                                 !rescheduleDisabled
@@ -4606,8 +4600,8 @@ const sourceTimezone =
                               )
                                 ? "Group bookings cannot be rescheduled from this list"
                                 : rescheduleDisabled
-                                ? "This booking cannot be rescheduled after the session start time"
-                                : "Reschedule booking"
+                                  ? "This booking cannot be rescheduled after the session start time"
+                                  : "Reschedule booking"
                             }
                             style={{
                               minWidth:
@@ -4637,8 +4631,8 @@ const sourceTimezone =
                         <td>
                           {bookingDate
                             ? bookingDate.format(
-                                "DD MMM YYYY"
-                              )
+                              "DD MMM YYYY"
+                            )
                             : "-"}
                         </td>
 
@@ -4656,8 +4650,8 @@ const sourceTimezone =
                               View
                             </button>
                           ) : norm(
-                              status
-                            ) ===
+                            status
+                          ) ===
                             "missed" ? (
                             <span className="lyl-no-recording">
                               No Recording
@@ -4683,7 +4677,7 @@ const sourceTimezone =
                             {isGroupBooking(
                               item
                             ) &&
-                            assistantNames.length >
+                              assistantNames.length >
                               0 ? (
                               <div className="lyl-assistant-line">
                                 <span className="lyl-assistant-label">
@@ -4737,7 +4731,7 @@ const sourceTimezone =
                                 }}
                                 value={
                                   amountDraftMap[
-                                    bookingId
+                                  bookingId
                                   ] ??
                                   getAmountValue(
                                     item
@@ -4776,7 +4770,7 @@ const sourceTimezone =
                                 onClick={() => {
                                   const value =
                                     amountDraftMap[
-                                      bookingId
+                                    bookingId
                                     ] ??
                                     getAmountValue(
                                       item
@@ -4828,12 +4822,11 @@ const sourceTimezone =
                           ) ? (
                             <div className="lyl-payment-readonly">
                               <span
-                                className={`badge ${
-                                  currentPaymentStatus ===
-                                  "Pending"
+                                className={`badge ${currentPaymentStatus ===
+                                    "Pending"
                                     ? "bg-warning text-dark"
                                     : "bg-danger"
-                                }`}
+                                  }`}
                               >
                                 {currentPaymentStatus}
                               </span>
@@ -4913,13 +4906,12 @@ const sourceTimezone =
 
                         <td>
                           <span
-                            className={`lyl-class-type-badge ${
-                              isGroupBooking(
-                                item
-                              )
+                            className={`lyl-class-type-badge ${isGroupBooking(
+                              item
+                            )
                                 ? "group"
                                 : "one-to-one"
-                            }`}
+                              }`}
                           >
                             {isGroupBooking(
                               item
@@ -4937,11 +4929,11 @@ const sourceTimezone =
                           >
                             {status
                               ? status
-                                  .charAt(0)
-                                  .toUpperCase() +
-                                status.slice(
-                                  1
-                                )
+                                .charAt(0)
+                                .toUpperCase() +
+                              status.slice(
+                                1
+                              )
                               : "-"}
                           </span>
                         </td>
@@ -4949,11 +4941,10 @@ const sourceTimezone =
                         <td>
                           <button
                             type="button"
-                            className={`btn btn-sm ${
-                              deleteDisabled
+                            className={`btn btn-sm ${deleteDisabled
                                 ? "btn-outline-secondary"
                                 : "btn-outline-danger"
-                            }`}
+                              }`}
                             disabled={
                               deleteDisabled ||
                               deleteLoading
@@ -4973,8 +4964,8 @@ const sourceTimezone =
                               )
                                 ? "Group bookings cannot be deleted using this action"
                                 : deleteDisabled
-                                ? "Past completed bookings cannot be deleted"
-                                : "Permanently delete this booking"
+                                  ? "Past completed bookings cannot be deleted"
+                                  : "Permanently delete this booking"
                             }
                             style={{
                               minWidth:
@@ -4988,7 +4979,7 @@ const sourceTimezone =
 
                               cursor:
                                 deleteDisabled ||
-                                deleteLoading
+                                  deleteLoading
                                   ? "not-allowed"
                                   : "pointer",
 
@@ -5012,56 +5003,56 @@ const sourceTimezone =
           </table>
         </div>
 
-        <div className="d-flex justify-content-between mt-3">
+        <div className="d-flex flex-wrap justify-content-between align-items-center gap-3 mt-3">
           <span>
             Showing{" "}
-            {filteredData.length ===
-            0
+            {filteredData.length === 0
               ? 0
-              : indexOfFirstItem +
-                1}{" "}
+              : indexOfFirstItem + 1}{" "}
             to{" "}
             {Math.min(
               indexOfLastItem,
               filteredData.length
             )}{" "}
             of{" "}
-            {
-              filteredData.length
-            }{" "}
+            {filteredData.length}{" "}
             entries
           </span>
 
-          <ul className="pagination">
-            {Array.from({
-              length:
-                totalPages,
-            }).map(
-              (_, index) => (
-                <li
-                  key={index}
-                  className={`page-item ${
-                    safePage ===
-                    index + 1
-                      ? "active"
-                      : ""
-                  }`}
-                >
-                  <button
-                    type="button"
-                    className="page-link"
-                    onClick={() =>
-                      setCurrentPage(
-                        index + 1
-                      )
-                    }
-                  >
-                    {index + 1}
-                  </button>
-                </li>
-              )
-            )}
-          </ul>
+          <div className="d-flex align-items-center gap-2">
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-secondary"
+              onClick={() =>
+                setCurrentPage((page) =>
+                  Math.max(1, page - 1)
+                )
+              }
+              disabled={safePage <= 1}
+            >
+              Previous
+            </button>
+
+            <span className="small">
+              Page {safePage} of {totalPages}
+            </span>
+
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-secondary"
+              onClick={() =>
+                setCurrentPage((page) =>
+                  Math.min(
+                    totalPages,
+                    page + 1
+                  )
+                )
+              }
+              disabled={safePage >= totalPages}
+            >
+              Next
+            </button>
+          </div>
         </div>
       </div>
 
@@ -5158,13 +5149,13 @@ const sourceTimezone =
         }
         timezone={
           selectedBooking &&
-          isGroupBooking(
-            selectedBooking
-          )
+            isGroupBooking(
+              selectedBooking
+            )
             ? TZ
             : selectedBooking
-                ?.studentTime_zone ||
-              TZ
+              ?.studentTime_zone ||
+            TZ
         }
       />
 

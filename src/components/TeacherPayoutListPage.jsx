@@ -1721,6 +1721,9 @@ const TeacherPayoutListPage = () => {
             <option value="Online">
               Online
             </option>
+            <option value="UK Bank Account">
+              UK Bank Account
+            </option>
           </select>
 
           <button
@@ -2186,6 +2189,9 @@ const TeacherPayoutListPage = () => {
                             <option value="Online">
                               Online
                             </option>
+                            <option value="UK Bank Account">
+                              UK Bank Account
+                            </option>
                           </select>
                         </td>
 
@@ -2237,9 +2243,9 @@ const TeacherPayoutListPage = () => {
               <li
                 key={index}
                 className={`page-item ${currentPage ===
-                    index + 1
-                    ? "active"
-                    : ""
+                  index + 1
+                  ? "active"
+                  : ""
                   }`}
               >
                 <button

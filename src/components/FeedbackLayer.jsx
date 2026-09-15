@@ -20,6 +20,7 @@ const UPDATE_DYNAMIC_URL = `${API_BASE}update_dynamic_data`;
 
 const SEND_ONE_TO_ONE_EMAIL_URL = `${API_BASE}send_progress_report_email`;
 const SEND_GROUP_EMAIL_URL = `${API_BASE}send_group_progress_report_email`;
+const REVIEW_FEEDBACK_URL = `${API_BASE}review_progress_feedback`;
 
 const REPORT_TYPES = {
   ONE_TO_ONE: "one_to_one",
@@ -244,6 +245,23 @@ const mapReportRow = (item, reportType) => {
       "pending"
   ).toLowerCase();
 
+  /*
+   * review_status is returned by both
+   * get_performance and get_group_performance_reports.
+   *
+   * Legacy reports that were already emailed before the
+   * approval workflow existed are treated as approved in
+   * the UI so existing sent reports remain locked/consistent.
+   */
+  const reviewStatus =
+    emailStatus === "sent"
+      ? "approved"
+      : String(
+          item.review_status ??
+            item.reviewStatus ??
+            "pending"
+        ).toLowerCase();
+
   const studentName = buildFullName(
     item.student_firstname,
     item.student_lastname,
@@ -321,6 +339,9 @@ const mapReportRow = (item, reportType) => {
 
     email_status:
       emailStatus || "pending",
+
+    review_status:
+      reviewStatus || "pending",
 
     student_email_status: String(
       item.student_email_status ?? "pending"
@@ -417,6 +438,40 @@ const isRowSent = (row) =>
   ).toLowerCase() === "sent" ||
   Boolean(row?.isEmailSent);
 
+const getReviewStatus = (row) =>
+  String(
+    row?.review_status ||
+      "pending"
+  ).toLowerCase();
+
+const getReviewStatusMeta = (row) => {
+  const status =
+    getReviewStatus(row);
+
+  if (status === "approved") {
+    return {
+      status,
+      label: "Approved",
+      badgeClass: "bg-success",
+    };
+  }
+
+  if (status === "not_approved") {
+    return {
+      status,
+      label: "Not Approved",
+      badgeClass: "bg-danger",
+    };
+  }
+
+  return {
+    status: "pending",
+    label: "Pending Review",
+    badgeClass:
+      "bg-warning text-dark",
+  };
+};
+
 const isApiSuccess = (response) =>
   response?.data?.statusCode === 200 ||
   response?.data?.status === true ||
@@ -453,6 +508,40 @@ const buildGroupSessionRows = (rows) => {
 
     const anySent =
       sortedMembers.some(isRowSent);
+
+    /*
+     * A group session contains one feedback row per student.
+     * Admin review applies to the whole group session, so the
+     * merged row must expose one consistent review status.
+     */
+    const anyNotApproved =
+      sortedMembers.some(
+        (member) =>
+          String(
+            member.review_status ||
+              "pending"
+          ).toLowerCase() ===
+          "not_approved"
+      );
+
+    const allApproved =
+      sortedMembers.every(
+        (member) =>
+          String(
+            member.review_status ||
+              "pending"
+          ).toLowerCase() ===
+          "approved"
+      );
+
+    const groupReviewStatus =
+      anySent
+        ? "approved"
+        : anyNotApproved
+        ? "not_approved"
+        : allApproved
+        ? "approved"
+        : "pending";
 
     const studentNames =
       sortedMembers
@@ -491,6 +580,9 @@ const buildGroupSessionRows = (rows) => {
         : anySent
         ? "partial"
         : "pending",
+
+      review_status:
+        groupReviewStatus,
 
       isEmailSent:
         allSent,
@@ -562,6 +654,11 @@ const FeedbackLayer = () => {
   const [
     sendingRowKey,
     setSendingRowKey,
+  ] = useState("");
+
+  const [
+    reviewingRowKey,
+    setReviewingRowKey,
   ] = useState("");
 
   const [search, setSearch] =
@@ -682,6 +779,8 @@ const FeedbackLayer = () => {
     setShowModal(false);
 
     setSendingRowKey("");
+
+    setReviewingRowKey("");
   }, [activeTab]);
 
   const filteredSortedRows =
@@ -952,7 +1051,12 @@ const FeedbackLayer = () => {
   };
 
   const closeFeedbackModal = () => {
-    if (savingFeedback) return;
+    if (
+      savingFeedback ||
+      Boolean(reviewingRowKey)
+    ) {
+      return;
+    }
 
     setShowModal(false);
 
@@ -1259,6 +1363,281 @@ const FeedbackLayer = () => {
       }
     };
 
+  const handleReviewFeedback =
+    async (row, nextStatus) => {
+      if (!row) return;
+
+      const reviewStatus =
+        String(
+          nextStatus || ""
+        ).toLowerCase();
+
+      if (
+        ![
+          "approved",
+          "not_approved",
+        ].includes(reviewStatus)
+      ) {
+        return Swal.fire(
+          "Error",
+          "Invalid review status.",
+          "error"
+        );
+      }
+
+      const isSent =
+        isGroupTab
+          ? Boolean(
+              row.hasAnyEmailSent
+            )
+          : isRowSent(row);
+
+      if (isSent) {
+        return Swal.fire(
+          "Locked",
+          "This report has already been emailed and can no longer be reviewed.",
+          "info"
+        );
+      }
+
+      if (
+        isGroupTab &&
+        !Number(row.feedbackId)
+      ) {
+        return Swal.fire(
+          "Error",
+          "Group feedback ID is missing.",
+          "error"
+        );
+      }
+
+      if (
+        !isGroupTab &&
+        !Number(row.sessionid)
+      ) {
+        return Swal.fire(
+          "Error",
+          "Session ID is missing.",
+          "error"
+        );
+      }
+
+      const isApproving =
+        reviewStatus ===
+        "approved";
+
+      const confirmation =
+        await Swal.fire({
+          title: isApproving
+            ? "Approve Feedback?"
+            : "Mark as Not Approved?",
+
+          text: isApproving
+            ? "This feedback will be approved and can then be sent to the student and parent."
+            : "The teacher will be notified by email and asked to update this feedback.",
+
+          icon: isApproving
+            ? "question"
+            : "warning",
+
+          showCancelButton: true,
+
+          confirmButtonText:
+            isApproving
+              ? "Yes, Approve"
+              : "Yes, Not Approved",
+
+          cancelButtonText:
+            "Cancel",
+
+          confirmButtonColor:
+            isApproving
+              ? "#0d6efd"
+              : "#dc3545",
+        });
+
+      if (
+        !confirmation.isConfirmed
+      ) {
+        return;
+      }
+
+      const rowKey =
+        getRowIdentity(
+          row,
+          activeTab
+        );
+
+      try {
+        setReviewingRowKey(
+          rowKey
+        );
+
+        const token =
+          await getToken();
+
+        if (!token) {
+          throw new Error(
+            "Token not found"
+          );
+        }
+
+        const payload = {
+          report_type:
+            isGroupTab
+              ? REPORT_TYPES.GROUP
+              : REPORT_TYPES.ONE_TO_ONE,
+
+          review_status:
+            reviewStatus,
+        };
+
+        if (isGroupTab) {
+          payload.feedback_id =
+            Number(
+              row.feedbackId
+            );
+        } else {
+          payload.sessionid =
+            Number(
+              row.sessionid
+            );
+        }
+
+        const response =
+          await axios.post(
+            REVIEW_FEEDBACK_URL,
+            payload,
+            {
+              headers: {
+                ...BASE_HEADERS,
+                token,
+              },
+            }
+          );
+
+        if (
+          !isApiSuccess(response)
+        ) {
+          throw new Error(
+            response?.data
+              ?.message ||
+              "Unable to review feedback."
+          );
+        }
+
+        /*
+         * Keep the current list in sync immediately.
+         * For group reports the backend updates every
+         * student feedback row in the same group session.
+         */
+        setRows(
+          (previousRows) =>
+            previousRows.map(
+              (current) => {
+                const shouldUpdate =
+                  isGroupTab
+                    ? Number(
+                        current
+                          .groupLiveSessionId
+                      ) ===
+                      Number(
+                        row
+                          .groupLiveSessionId
+                      )
+                    : Number(
+                        current.sessionid
+                      ) ===
+                      Number(
+                        row.sessionid
+                      );
+
+                return shouldUpdate
+                  ? {
+                      ...current,
+
+                      review_status:
+                        reviewStatus,
+                    }
+                  : current;
+              }
+            )
+        );
+
+        setCurrentRow(
+          (previous) => {
+            if (!previous) {
+              return previous;
+            }
+
+            return {
+              ...previous,
+
+              review_status:
+                reviewStatus,
+
+              members:
+                Array.isArray(
+                  previous.members
+                )
+                  ? previous.members.map(
+                      (member) => ({
+                        ...member,
+
+                        review_status:
+                          reviewStatus,
+                      })
+                    )
+                  : previous.members,
+            };
+          }
+        );
+
+        await Swal.fire({
+          icon: "success",
+
+          title: isApproving
+            ? "Feedback Approved"
+            : "Teacher Notified",
+
+          text: isApproving
+            ? "The feedback has been approved successfully."
+            : "The feedback has been marked as not approved and the teacher has been notified by email.",
+
+          timer: 2300,
+
+          showConfirmButton:
+            false,
+        });
+
+        setShowModal(false);
+
+        setCurrentRow(null);
+
+        /*
+         * Reload from DB so the screen always reflects
+         * the server result after the review action.
+         */
+        setReloadKey(
+          (value) =>
+            value + 1
+        );
+      } catch (error) {
+        console.error(error);
+
+        Swal.fire(
+          "Review Failed",
+          error?.response?.data
+            ?.message ||
+            error?.message ||
+            "Something went wrong while reviewing the feedback.",
+          "error"
+        );
+      } finally {
+        setReviewingRowKey("");
+      }
+    };
+
   const getMissingGroupFields = (
     row
   ) =>
@@ -1276,6 +1655,28 @@ const FeedbackLayer = () => {
 
   const handleSendEmail =
     async (row) => {
+      const reviewStatus =
+        getReviewStatus(row);
+
+      /*
+       * Frontend guard.
+       * Backend also blocks unapproved reports,
+       * so direct API calls remain protected too.
+       */
+      if (
+        reviewStatus !==
+        "approved"
+      ) {
+        return Swal.fire(
+          "Approval Required",
+          reviewStatus ===
+            "not_approved"
+            ? "This feedback has not been approved. The teacher must update it before the report can be sent."
+            : "This feedback is awaiting admin approval.",
+          "warning"
+        );
+      }
+
       if (isGroupTab) {
         const members =
           Array.isArray(row.members)
@@ -1691,7 +2092,7 @@ const FeedbackLayer = () => {
     "pf-dark";
 
   const tableColumnCount =
-    isGroupTab ? 10 : 9;
+    isGroupTab ? 11 : 10;
 
   return (
     <div className="row gy-4">
@@ -1922,6 +2323,9 @@ const FeedbackLayer = () => {
                       Boolean(
                         sendingRowKey
                       ) ||
+                      Boolean(
+                        reviewingRowKey
+                      ) ||
                       savingFeedback
                     }
                   >
@@ -1945,6 +2349,9 @@ const FeedbackLayer = () => {
                       Boolean(
                         sendingRowKey
                       ) ||
+                      Boolean(
+                        reviewingRowKey
+                      ) ||
                       savingFeedback
                     }
                   >
@@ -1961,7 +2368,16 @@ const FeedbackLayer = () => {
                         value + 1
                     )
                   }
-                  disabled={loading}
+                  disabled={
+                    loading ||
+                    Boolean(
+                      sendingRowKey
+                    ) ||
+                    Boolean(
+                      reviewingRowKey
+                    ) ||
+                    savingFeedback
+                  }
                 >
                   <Icon
                     icon="solar:refresh-linear"
@@ -2117,6 +2533,10 @@ const FeedbackLayer = () => {
                     </th>
 
                     <th className="text-center">
+                      Review Status
+                    </th>
+
+                    <th className="text-center">
                       Progress Report
                     </th>
 
@@ -2193,6 +2613,19 @@ const FeedbackLayer = () => {
                         const isSending =
                           sendingRowKey ===
                           rowKey;
+
+                        const reviewMeta =
+                          getReviewStatusMeta(
+                            row
+                          );
+
+                        const isApproved =
+                          reviewMeta.status ===
+                          "approved";
+
+                        const isNotApproved =
+                          reviewMeta.status ===
+                          "not_approved";
 
                         const recordingUrl =
                           normalizeUrl(
@@ -2288,6 +2721,16 @@ const FeedbackLayer = () => {
                             </td>
 
                             <td className="text-center">
+                              <span
+                                className={`badge ${reviewMeta.badgeClass}`}
+                              >
+                                {
+                                  reviewMeta.label
+                                }
+                              </span>
+                            </td>
+
+                            <td className="text-center">
                               <button
                                 type="button"
                                 className="btn btn-sm btn-outline-primary"
@@ -2310,7 +2753,10 @@ const FeedbackLayer = () => {
                               <button
                                 type="button"
                                 className={`btn btn-sm ${
-                                  row.hasPartialEmailSent
+                                  !isApproved &&
+                                  !isSent
+                                    ? "btn-secondary"
+                                    : row.hasPartialEmailSent
                                     ? "btn-warning"
                                     : "btn-success"
                                 }`}
@@ -2321,13 +2767,18 @@ const FeedbackLayer = () => {
                                 }
                                 disabled={
                                   isSent ||
-                                  isSending
+                                  isSending ||
+                                  !isApproved
                                 }
                                 title={
                                   isSent
                                     ? isGroupTab
                                       ? "Already sent to all students"
                                       : "Already sent"
+                                    : !isApproved
+                                    ? isNotApproved
+                                      ? "Feedback not approved"
+                                      : "Awaiting admin approval"
                                     : row.hasPartialEmailSent
                                     ? "Retry pending students"
                                     : isGroupTab
@@ -2339,6 +2790,10 @@ const FeedbackLayer = () => {
                                   ? "Sent"
                                   : isSending
                                   ? "Sending..."
+                                  : !isApproved
+                                  ? isNotApproved
+                                    ? "Not Approved"
+                                    : "Pending Review"
                                   : row.hasPartialEmailSent
                                   ? "Retry Pending"
                                   : isGroupTab
@@ -2600,7 +3055,7 @@ const FeedbackLayer = () => {
 
                         <div className="mt-2">
                           <small>
-                            Status
+                            Email Status
                           </small>{" "}
 
                           <span
@@ -2618,6 +3073,29 @@ const FeedbackLayer = () => {
                               ? "Sent"
                               : "Pending"}
                           </span>
+                        </div>
+
+                        <div className="mt-2">
+                          <small>
+                            Review Status
+                          </small>{" "}
+
+                          {(() => {
+                            const reviewMeta =
+                              getReviewStatusMeta(
+                                currentRow
+                              );
+
+                            return (
+                              <span
+                                className={`badge ${reviewMeta.badgeClass}`}
+                              >
+                                {
+                                  reviewMeta.label
+                                }
+                              </span>
+                            );
+                          })()}
                         </div>
                       </div>
 
@@ -3012,9 +3490,85 @@ const FeedbackLayer = () => {
                   onClick={
                     closeFeedbackModal
                   }
+                  disabled={
+                    Boolean(
+                      reviewingRowKey
+                    )
+                  }
                 >
                   Close
                 </button>
+
+                {!(
+                  isGroupTab
+                    ? Boolean(
+                        currentRow
+                          .hasAnyEmailSent
+                      )
+                    : isRowSent(
+                        currentRow
+                      )
+                ) && (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      onClick={() =>
+                        handleReviewFeedback(
+                          currentRow,
+                          "not_approved"
+                        )
+                      }
+                      disabled={
+                        savingFeedback ||
+                        Boolean(
+                          reviewingRowKey
+                        ) ||
+                        getReviewStatus(
+                          currentRow
+                        ) ===
+                          "not_approved"
+                      }
+                    >
+                      {reviewingRowKey ===
+                      getRowIdentity(
+                        currentRow,
+                        activeTab
+                      )
+                        ? "Processing..."
+                        : "Not Approved"}
+                    </button>
+
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() =>
+                        handleReviewFeedback(
+                          currentRow,
+                          "approved"
+                        )
+                      }
+                      disabled={
+                        savingFeedback ||
+                        Boolean(
+                          reviewingRowKey
+                        ) ||
+                        getReviewStatus(
+                          currentRow
+                        ) ===
+                          "approved"
+                      }
+                    >
+                      {reviewingRowKey ===
+                      getRowIdentity(
+                        currentRow,
+                        activeTab
+                      )
+                        ? "Processing..."
+                        : "Approve"}
+                    </button>
+                  </>
+                )}
 
                 <button
                   type="button"
@@ -3024,6 +3578,9 @@ const FeedbackLayer = () => {
                   }
                   disabled={
                     savingFeedback ||
+                    Boolean(
+                      reviewingRowKey
+                    ) ||
                     (isGroupTab
                       ? Boolean(
                           currentRow.hasAnyEmailSent

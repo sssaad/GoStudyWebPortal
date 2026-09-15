@@ -148,7 +148,7 @@ const InpersonBookingLayer = () => {
 
   const TZ = "Asia/Dubai";
 
-    const cleanTimezone = (value) => String(value || "").replace(/\\\//g, "/").trim();
+  const cleanTimezone = (value) => String(value || "").replace(/\\\//g, "/").trim();
 
   const getStudentTimezone = (item) => {
     const tz =
@@ -359,7 +359,7 @@ const InpersonBookingLayer = () => {
 
     if (!date) return "Upcoming";
 
-        const startDT = start ? parseBookingDateTime(item, "start") : null;
+    const startDT = start ? parseBookingDateTime(item, "start") : null;
     const endDT = end ? parseBookingDateTime(item, "end") : null;
 
     if (endDT) {
@@ -374,7 +374,7 @@ const InpersonBookingLayer = () => {
       return "Upcoming";
     }
 
-        const dayEnd = parseBookingDateTime(
+    const dayEnd = parseBookingDateTime(
       {
         ...item,
         slot_end: "23:59:59",
@@ -411,7 +411,7 @@ const InpersonBookingLayer = () => {
       return false;
     }
 
-        const bd = getDubaiBookDateMoment(item);
+    const bd = getDubaiBookDateMoment(item);
     if (!bd) return false;
 
     return bd.isBefore(getNow(), "day");
@@ -818,7 +818,7 @@ const InpersonBookingLayer = () => {
         const deduped = dedupeBookings(raw);
 
         const sorted = deduped.slice().sort((a, b) => {
-                    const ma = getDubaiBookDateMoment(a);
+          const ma = getDubaiBookDateMoment(a);
           const mb = getDubaiBookDateMoment(b);
           return (mb?.valueOf?.() || 0) - (ma?.valueOf?.() || 0);
         });
@@ -906,7 +906,7 @@ const InpersonBookingLayer = () => {
         !psFilter || norm(getPaymentStatusDisplay(item?.payment_status)) === psFilter;
       const matchesBookingType = !btFilter || norm(item?.booking_type) === btFilter;
 
-            const itemDate = getDubaiBookDateMoment(item);
+      const itemDate = getDubaiBookDateMoment(item);
       const fromOk = startM ? (itemDate ? itemDate.isSameOrAfter(startM, "day") : false) : true;
       const toOk = endM ? (itemDate ? itemDate.isSameOrBefore(endM, "day") : false) : true;
 
@@ -944,14 +944,14 @@ const InpersonBookingLayer = () => {
     const heading = [["Inperson Booking List"]];
     const data = filteredData.map((item, i) => {
       const status = getBookingStatus(item);
-            const bd = getDubaiBookDateMoment(item);
+      const bd = getDubaiBookDateMoment(item);
 
       return {
         "S.L": i + 1,
         "Book Date": bd ? bd.format("DD MMM YYYY") : "-",
         "Student Name": item?.studentname || "-",
         "Booked Teacher": item?.teachername || "-",
-                "Slot Start": formatDubaiBookingTime(item, "start"),
+        "Slot Start": formatDubaiBookingTime(item, "start"),
         "Slot End": formatDubaiBookingTime(item, "end"),
         Amount: getAmountText(item),
         "Payment Type": item?.payment_type || "-",
@@ -991,14 +991,14 @@ const InpersonBookingLayer = () => {
 
     const rowsPdf = filteredData.map((item, i) => {
       const status = getBookingStatus(item);
-            const bd = getDubaiBookDateMoment(item);
+      const bd = getDubaiBookDateMoment(item);
 
       return [
         i + 1,
         bd ? bd.format("DD MMM YYYY") : "-",
         item?.studentname || "-",
         item?.teachername || "-",
-                formatDubaiBookingTime(item, "start"),
+        formatDubaiBookingTime(item, "start"),
         formatDubaiBookingTime(item, "end"),
         getAmountText(item),
         item?.payment_type || "-",
@@ -1347,7 +1347,7 @@ const InpersonBookingLayer = () => {
           </div>
         ) : null}
 
-                <div className="alert alert-info py-2 px-3 mb-3" style={{ fontWeight: 600 }}>
+        <div className="alert alert-info py-2 px-3 mb-3" style={{ fontWeight: 600 }}>
           All booking dates and times are shown in Asia/Dubai timezone.
         </div>
 
@@ -1381,7 +1381,7 @@ const InpersonBookingLayer = () => {
               ) : (
                 currentItems.map((item, index) => {
                   const status = getBookingStatus(item);
-                                    const bd = getDubaiBookDateMoment(item);
+                  const bd = getDubaiBookDateMoment(item);
                   const isDisabled = isRescheduleDisabled(item);
                   const bookingId = getBookingId(item);
 
@@ -1425,7 +1425,7 @@ const InpersonBookingLayer = () => {
                       <td>{bd ? bd.format("DD MMM YYYY") : "-"}</td>
                       <td>{item?.studentname || "-"}</td>
                       <td>{item?.teachername || "-"}</td>
-                                            <td>{formatDubaiBookingTime(item, "start")}</td>
+                      <td>{formatDubaiBookingTime(item, "start")}</td>
                       <td>{formatDubaiBookingTime(item, "end")}</td>
                       <td>
                         <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
@@ -1511,21 +1511,44 @@ const InpersonBookingLayer = () => {
           </table>
         </div>
 
-        <div className="d-flex justify-content-between mt-3">
+        <div className="d-flex flex-wrap justify-content-between align-items-center gap-3 mt-3">
           <span>
             Showing {filteredData.length === 0 ? 0 : indexOfFirstItem + 1} to{" "}
-            {Math.min(indexOfLastItem, filteredData.length)} of {filteredData.length} entries
+            {Math.min(indexOfLastItem, filteredData.length)} of{" "}
+            {filteredData.length} entries
           </span>
 
-          <ul className="pagination">
-            {Array.from({ length: totalPages }).map((_, i) => (
-              <li key={i} className={`page-item ${safePage === i + 1 ? "active" : ""}`}>
-                <button onClick={() => setCurrentPage(i + 1)} className="page-link">
-                  {i + 1}
-                </button>
-              </li>
-            ))}
-          </ul>
+          <div className="d-flex align-items-center gap-2">
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-secondary"
+              onClick={() =>
+                setCurrentPage((page) =>
+                  Math.max(1, page - 1)
+                )
+              }
+              disabled={safePage <= 1}
+            >
+              Previous
+            </button>
+
+            <span className="small">
+              Page {safePage} of {totalPages}
+            </span>
+
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-secondary"
+              onClick={() =>
+                setCurrentPage((page) =>
+                  Math.min(totalPages, page + 1)
+                )
+              }
+              disabled={safePage >= totalPages}
+            >
+              Next
+            </button>
+          </div>
         </div>
       </div>
 

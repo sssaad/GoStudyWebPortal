@@ -4,9 +4,41 @@ import React, {
   useMemo,
   useState,
 } from "react";
+import axios from "axios";
+import Swal from "sweetalert2";
 import { Icon } from "@iconify/react/dist/iconify.js";
 import moment from "moment-timezone";
 import { getAllBookings } from "../api/getAllBookings";
+import { getToken } from "../api/getToken";
+
+const RUN_STORED_PROCEDURE_URL =
+  "https://api.learnyourlanguage.org/RestController_Thirdparty.php?view=runStoredProcedure";
+
+const API_HEADERS = {
+  projectid: "1",
+  userid: "test",
+  password: "test",
+  "x-api-key": "abc123456789",
+  "Content-Type": "application/json",
+};
+
+const DELETE_GROUP_SESSION_PROCEDURE =
+  "sp_portal_delete_group_live_session";
+
+const resolveToken = (tokenResponse) => {
+  if (typeof tokenResponse === "string") {
+    return tokenResponse;
+  }
+
+  return (
+    tokenResponse?.token ||
+    tokenResponse?.data?.token ||
+    tokenResponse?.data?.data?.token ||
+    tokenResponse?.access_token ||
+    tokenResponse?.data?.access_token ||
+    ""
+  );
+};
 
 const GroupBookingListLayer = () => {
   const TZ = "Asia/Dubai";
@@ -55,6 +87,11 @@ const GroupBookingListLayer = () => {
     setRecordingModal,
   ] = useState(null);
 
+  const [
+    deletingSessionId,
+    setDeletingSessionId,
+  ] = useState("");
+
   const norm = (value) =>
     String(value ?? "")
       .trim()
@@ -66,39 +103,39 @@ const GroupBookingListLayer = () => {
       .trim();
 
   const cleanTimezone = (
-  value
-) =>
-  String(value || "")
-    .replace(/\\\//g, "/")
-    .trim();
+    value
+  ) =>
+    String(value || "")
+      .replace(/\\\//g, "/")
+      .trim();
 
-const getStudentTimezone = (
-  item
-) => {
-  const timezone =
-    cleanTimezone(
-      item?.studentTime_zone
-    ) ||
-    cleanTimezone(
-      item?.student_timezone
-    ) ||
-    cleanTimezone(
-      item?.studentTimezone
-    ) ||
-    cleanTimezone(
-      item?.timezone_location
-    ) ||
-    cleanTimezone(
-      item?.timezone
-    ) ||
-    TZ;
+  const getStudentTimezone = (
+    item
+  ) => {
+    const timezone =
+      cleanTimezone(
+        item?.studentTime_zone
+      ) ||
+      cleanTimezone(
+        item?.student_timezone
+      ) ||
+      cleanTimezone(
+        item?.studentTimezone
+      ) ||
+      cleanTimezone(
+        item?.timezone_location
+      ) ||
+      cleanTimezone(
+        item?.timezone
+      ) ||
+      TZ;
 
-  return moment.tz.zone(
-    timezone
-  )
-    ? timezone
-    : TZ;
-};
+    return moment.tz.zone(
+      timezone
+    )
+      ? timezone
+      : TZ;
+  };
 
   const getRole = (item) =>
     norm(
@@ -177,96 +214,96 @@ const getStudentTimezone = (
     );
   };
 
- const parseSessionDateTime = (
-  item,
-  type = "start"
-) => {
-  /*
-   * First preference:
-   * bookteacher date/time.
-   *
-   * These values are stored in the
-   * student's booking timezone.
-   */
-  const bookingDate =
-    item?.bookdate || "";
+  const parseSessionDateTime = (
+    item,
+    type = "start"
+  ) => {
+    /*
+     * First preference:
+     * bookteacher date/time.
+     *
+     * These values are stored in the
+     * student's booking timezone.
+     */
+    const bookingDate =
+      item?.bookdate || "";
 
-  const bookingTime =
-    type === "end"
-      ? item?.slot_end || ""
-      : item?.slot_start || "";
+    const bookingTime =
+      type === "end"
+        ? item?.slot_end || ""
+        : item?.slot_start || "";
 
-  const hasBookteacherDateTime =
-    Boolean(bookingDate) &&
-    Boolean(bookingTime);
+    const hasBookteacherDateTime =
+      Boolean(bookingDate) &&
+      Boolean(bookingTime);
 
-  /*
-   * Fallback:
-   * official group session fields.
-   */
-  const date =
-    hasBookteacherDateTime
-      ? bookingDate
-      : item?.group_session_date ||
+    /*
+     * Fallback:
+     * official group session fields.
+     */
+    const date =
+      hasBookteacherDateTime
+        ? bookingDate
+        : item?.group_session_date ||
         item?.booking_date ||
         "";
 
-  const time =
-    hasBookteacherDateTime
-      ? bookingTime
-      : type === "end"
-      ? item?.group_session_end ||
-        item?.booking_end_time ||
-        "00:00:00"
-      : item?.group_session_start ||
-        item?.booking_start_time ||
-        "00:00:00";
+    const time =
+      hasBookteacherDateTime
+        ? bookingTime
+        : type === "end"
+          ? item?.group_session_end ||
+          item?.booking_end_time ||
+          "00:00:00"
+          : item?.group_session_start ||
+          item?.booking_start_time ||
+          "00:00:00";
 
-  if (!date) {
-    return null;
-  }
+    if (!date) {
+      return null;
+    }
 
-  const sourceTimezone =
-    hasBookteacherDateTime
-      ? getStudentTimezone(item)
-      : TZ;
+    const sourceTimezone =
+      hasBookteacherDateTime
+        ? getStudentTimezone(item)
+        : TZ;
 
-  const formats = [
-    "YYYY-MM-DD HH:mm:ss",
-    "YYYY-MM-DD HH:mm",
-    "YYYY/MM/DD HH:mm:ss",
-    "YYYY/MM/DD HH:mm",
-    "DD-MM-YYYY HH:mm:ss",
-    "DD-MM-YYYY HH:mm",
-    "DD/MM/YYYY HH:mm:ss",
-    "DD/MM/YYYY HH:mm",
-    moment.ISO_8601,
-  ];
+    const formats = [
+      "YYYY-MM-DD HH:mm:ss",
+      "YYYY-MM-DD HH:mm",
+      "YYYY/MM/DD HH:mm:ss",
+      "YYYY/MM/DD HH:mm",
+      "DD-MM-YYYY HH:mm:ss",
+      "DD-MM-YYYY HH:mm",
+      "DD/MM/YYYY HH:mm:ss",
+      "DD/MM/YYYY HH:mm",
+      moment.ISO_8601,
+    ];
 
-  let parsed = moment.tz(
-    `${date} ${time}`,
-    formats,
-    true,
-    sourceTimezone
-  );
-
-  if (!parsed.isValid()) {
-    parsed = moment.tz(
+    let parsed = moment.tz(
       `${date} ${time}`,
       formats,
+      true,
       sourceTimezone
     );
-  }
 
-  if (!parsed.isValid()) {
-    return null;
-  }
+    if (!parsed.isValid()) {
+      parsed = moment.tz(
+        `${date} ${time}`,
+        formats,
+        sourceTimezone
+      );
+    }
 
-  /*
-   * Portal always displays Asia/Dubai.
-   */
-  return parsed.tz(TZ);
-};
+    if (!parsed.isValid()) {
+      return null;
+    }
+
+    /*
+     * Portal always displays Asia/Dubai.
+     */
+    return parsed.tz(TZ);
+  };
   const getRecordingUrl = (
     sessionRows
   ) => {
@@ -289,9 +326,9 @@ const getStudentTimezone = (
 
     return rowWithRecording
       ? cleanUrl(
-          rowWithRecording
-            .recording_s3_url
-        )
+        rowWithRecording
+          .recording_s3_url
+      )
       : "";
   };
 
@@ -353,13 +390,13 @@ const getStudentTimezone = (
         (row) =>
           Number(
             row?.is_cancelled ||
-              0
+            0
           ) === 1 ||
           norm(
             row
               ?.group_session_status
           ) ===
-            "cancelled"
+          "cancelled"
       );
 
     /*
@@ -600,10 +637,10 @@ const getStudentTimezone = (
     if (
       item
         ?.group_payment_amount !==
-        null &&
+      null &&
       item
         ?.group_payment_amount !==
-        undefined &&
+      undefined &&
       String(
         item
           .group_payment_amount
@@ -618,8 +655,8 @@ const getStudentTimezone = (
     const bookingAmount =
       Number(
         item?.booking_amount ??
-          item?.amount ??
-          0
+        item?.amount ??
+        0
       );
 
     return Number.isFinite(
@@ -753,9 +790,9 @@ const getStudentTimezone = (
      */
     return firstOrder <= 1
       ? firstTime -
-          secondTime
+      secondTime
       : secondTime -
-          firstTime;
+      firstTime;
   };
 
   const getCollectionSortMeta = (
@@ -808,15 +845,15 @@ const getStudentTimezone = (
       nextActiveTime:
         activeTimes.length
           ? Math.min(
-              ...activeTimes
-            )
+            ...activeTimes
+          )
           : 0,
 
       latestPastTime:
         pastTimes.length
           ? Math.max(
-              ...pastTimes
-            )
+            ...pastTimes
+          )
           : 0,
     };
   };
@@ -918,11 +955,11 @@ const getStudentTimezone = (
               Number(
                 item
                   ?.is_group_booking ||
-                  0
+                0
               ) === 1 &&
               Number(
                 item?.deleted ||
-                  0
+                0
               ) !== 1
           );
 
@@ -1014,9 +1051,9 @@ const getStudentTimezone = (
               getProgrammeId(
                 row
               ) ||
-                getProgrammeName(
-                  row
-                )
+              getProgrammeName(
+                row
+              )
             );
 
           const batchKey =
@@ -1024,7 +1061,7 @@ const getStudentTimezone = (
               getBatchId(
                 row
               ) ||
-                "no-batch"
+              "no-batch"
             );
 
           const sessionKey =
@@ -1032,14 +1069,14 @@ const getStudentTimezone = (
               getSessionId(
                 row
               ) ||
-                [
-                  row
-                    ?.group_session_title,
-                  row
-                    ?.group_session_date,
-                  row
-                    ?.group_session_start,
-                ].join("|")
+              [
+                row
+                  ?.group_session_title,
+                row
+                  ?.group_session_date,
+                row
+                  ?.group_session_start,
+              ].join("|")
             );
 
           if (
@@ -1072,7 +1109,7 @@ const getStudentTimezone = (
                   Number(
                     row
                       ?.group_programme_price ||
-                      0
+                    0
                   ),
 
                 batchesMap:
@@ -1400,7 +1437,7 @@ const getStudentTimezone = (
                                 Number(
                                   representativeRow
                                     ?.group_session_capacity ||
-                                    0
+                                  0
                                 ),
 
                               mainTeachers,
@@ -1440,7 +1477,7 @@ const getStudentTimezone = (
                             batchStudents.add(
                               String(
                                 student.id ||
-                                  student.name
+                                student.name
                               )
                             )
                         );
@@ -1514,7 +1551,7 @@ const getStudentTimezone = (
                         programmeStudents.add(
                           String(
                             student.id ||
-                              student.name
+                            student.name
                           )
                         )
                     );
@@ -1631,9 +1668,9 @@ const getStudentTimezone = (
               String(
                 programme.id
               ) !==
-                String(
-                  programmeFilter
-                )
+              String(
+                programmeFilter
+              )
             ) {
               return null;
             }
@@ -1650,7 +1687,7 @@ const getStudentTimezone = (
                     if (
                       batchFilter &&
                       batchFilter !==
-                        currentBatchKey
+                      currentBatchKey
                     ) {
                       return null;
                     }
@@ -1665,9 +1702,9 @@ const getStudentTimezone = (
                             norm(
                               session.status
                             ) !==
-                              norm(
-                                statusFilter
-                              )
+                            norm(
+                              statusFilter
+                            )
                           ) {
                             return false;
                           }
@@ -1808,7 +1845,7 @@ const getStudentTimezone = (
                       students.add(
                         String(
                           student.id ||
-                            student.name
+                          student.name
                         )
                       )
                   )
@@ -1921,6 +1958,364 @@ const getStudentTimezone = (
     });
   };
 
+  const canDeleteSession = (
+    session
+  ) => {
+    if (!session) {
+      return false;
+    }
+
+    /*
+     * Delete only upcoming sessions.
+     */
+    if (
+      norm(session.status) !==
+      "upcoming"
+    ) {
+      return false;
+    }
+
+    /*
+     * Recording exists means we do not
+     * allow this delete flow.
+     */
+    if (session.hasRecording) {
+      return false;
+    }
+
+    const sessionId =
+      Number(session.id);
+
+    return (
+      Number.isInteger(
+        sessionId
+      ) &&
+      sessionId > 0
+    );
+  };
+
+
+  const handleDeleteSession =
+    async (
+      session,
+      programme,
+      batch
+    ) => {
+      if (
+        !canDeleteSession(
+          session
+        )
+      ) {
+        await Swal.fire({
+          icon: "warning",
+          title:
+            "Session Cannot Be Deleted",
+          text:
+            "Only upcoming sessions without a recording can be deleted.",
+          confirmButtonColor:
+            "#487fff",
+        });
+
+        return;
+      }
+
+      const sessionId =
+        Number(session.id);
+
+      const batchId =
+        Number(batch?.id);
+
+      if (
+        !sessionId ||
+        !batchId
+      ) {
+        await Swal.fire({
+          icon: "error",
+          title:
+            "Missing Session Data",
+          text:
+            "Session ID or Batch ID is missing.",
+          confirmButtonColor:
+            "#dc2626",
+        });
+
+        return;
+      }
+
+      const teacherNames =
+        session.mainTeachers
+          ?.map(
+            (teacher) =>
+              teacher.name
+          )
+          .filter(Boolean)
+          .join(", ") ||
+        "N/A";
+
+      const confirmation =
+        await Swal.fire({
+          icon: "warning",
+
+          title:
+            "Delete Group Session?",
+
+          html: `
+            <div style="text-align:left; line-height:1.8;">
+              <div>
+                <strong>Programme:</strong>
+                ${programme?.name || "-"}
+              </div>
+
+              <div>
+                <strong>Batch:</strong>
+                ${batch?.label || batchId}
+              </div>
+
+              <div>
+                <strong>Session:</strong>
+                ${session.title || "-"}
+              </div>
+
+              <div>
+                <strong>Date:</strong>
+                ${session.date || "-"}
+              </div>
+
+              <div>
+                <strong>Time:</strong>
+                ${session.startTime || "-"}
+                -
+                ${session.endTime || "-"}
+              </div>
+
+              <div>
+                <strong>Teacher:</strong>
+                ${teacherNames}
+              </div>
+
+              <div>
+                <strong>Students:</strong>
+                ${session.students
+              ?.length || 0
+            }
+              </div>
+
+              <div style="
+                margin-top:12px;
+                color:#dc2626;
+                font-weight:700;
+              ">
+                This will delete all bookings for this specific session and reset its class data.
+The session setup and other recurring sessions will remain unchanged.
+              </div>
+            </div>
+          `,
+
+          showCancelButton: true,
+
+          confirmButtonText:
+            "Yes, Delete",
+
+          cancelButtonText:
+            "Cancel",
+
+          confirmButtonColor:
+            "#dc2626",
+
+          cancelButtonColor:
+            "#64748b",
+
+          reverseButtons: true,
+        });
+
+      if (
+        !confirmation.isConfirmed
+      ) {
+        return;
+      }
+
+      setDeletingSessionId(
+        String(sessionId)
+      );
+
+      try {
+        /*
+         * Get portal API token.
+         */
+        const tokenResponse =
+          await getToken();
+
+        const token =
+          resolveToken(
+            tokenResponse
+          );
+
+        if (!token) {
+          throw new Error(
+            "API token could not be generated."
+          );
+        }
+
+        /*
+         * Call stored procedure.
+         *
+         * SP parameters:
+         *
+         * 1. p_group_live_session_id
+         * 2. p_group_batch_id
+         */
+        const response =
+          await axios.post(
+            RUN_STORED_PROCEDURE_URL,
+            {
+              procedureName:
+                DELETE_GROUP_SESSION_PROCEDURE,
+
+              parameters: [
+                sessionId,
+                batchId,
+              ],
+            },
+            {
+              headers: {
+                ...API_HEADERS,
+                token,
+              },
+            }
+          );
+
+        const responseData =
+          response?.data || {};
+
+        if (
+          Number(
+            responseData
+              ?.statusCode
+          ) !== 200
+        ) {
+          throw new Error(
+            responseData
+              ?.message ||
+            "Group session could not be deleted."
+          );
+        }
+
+        /*
+         * Our SP returns SELECT:
+         *
+         * success
+         * message
+         * group_live_session_id
+         * group_batch_id
+         * deleted_bookings
+         * affected_payments
+         * etc.
+         */
+        let procedureResult =
+          null;
+
+        if (
+          Array.isArray(
+            responseData?.data
+          )
+        ) {
+          procedureResult =
+            responseData
+              .data[0] ||
+            null;
+        } else if (
+          Array.isArray(
+            responseData?.result
+          )
+        ) {
+          procedureResult =
+            responseData
+              .result[0] ||
+            null;
+        }
+
+        if (
+          procedureResult &&
+          procedureResult
+            ?.success !==
+          undefined &&
+          Number(
+            procedureResult
+              .success
+          ) !== 1
+        ) {
+          throw new Error(
+            procedureResult
+              ?.message ||
+            "Group session delete failed."
+          );
+        }
+
+        /*
+         * Close details modal if this
+         * same session is open.
+         */
+        if (
+          String(
+            selectedSession?.id ||
+            ""
+          ) ===
+          String(sessionId)
+        ) {
+          setSelectedSession(
+            null
+          );
+        }
+
+        /*
+         * Reload complete group list.
+         */
+        await fetchGroupBookings();
+
+        await Swal.fire({
+          icon: "success",
+          title:
+            "Session Deleted",
+          text:
+            procedureResult
+              ?.message ||
+            "Group session bookings deleted successfully.",
+          timer: 1800,
+          timerProgressBar:
+            true,
+          showConfirmButton:
+            false,
+        });
+      } catch (error) {
+        console.error(
+          "Delete group session error:",
+          error
+        );
+
+        const apiMessage =
+          error?.response
+            ?.data?.message ||
+          error?.response
+            ?.data?.error ||
+          error?.message ||
+          "Group session could not be deleted.";
+
+        await Swal.fire({
+          icon: "error",
+          title:
+            "Delete Failed",
+          text:
+            apiMessage,
+          confirmButtonColor:
+            "#dc2626",
+        });
+      } finally {
+        setDeletingSessionId(
+          ""
+        );
+      }
+    };
+
   const resetFilters = () => {
     setSearchTerm("");
     setProgrammeFilter("");
@@ -1929,26 +2324,26 @@ const getStudentTimezone = (
   };
 
   if (loading) {
-  return (
-    <div
-      className="d-flex justify-content-center align-items-center"
-      style={{
-        height: "300px",
-      }}
-    >
+    return (
       <div
+        className="d-flex justify-content-center align-items-center"
         style={{
-          width: "48px",
-          height: "48px",
-          border: "6px solid #e0e0e0",
-          borderTop: "6px solid #45B369",
-          borderRadius: "50%",
-          animation: "spin 1s linear infinite",
+          height: "300px",
         }}
-      />
+      >
+        <div
+          style={{
+            width: "48px",
+            height: "48px",
+            border: "6px solid #e0e0e0",
+            borderTop: "6px solid #45B369",
+            borderRadius: "50%",
+            animation: "spin 1s linear infinite",
+          }}
+        />
 
-      <style>
-        {`
+        <style>
+          {`
           @keyframes spin {
             0% {
               transform: rotate(0deg);
@@ -1959,10 +2354,10 @@ const getStudentTimezone = (
             }
           }
         `}
-      </style>
-    </div>
-  );
-}
+        </style>
+      </div>
+    );
+  }
 
   return (
     <div className="gb-page">
@@ -2043,6 +2438,40 @@ const getStudentTimezone = (
             font-size: 12px;
             font-weight: 800;
             white-space: nowrap;
+          }
+
+                    .gb-action-buttons {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            flex-wrap: nowrap;
+          }
+
+          .gb-delete-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 9px 13px;
+            border: 1px solid #dc2626;
+            border-radius: 10px;
+            background: rgba(220, 38, 38, 0.10);
+            color: #dc2626;
+            font-size: 12px;
+            font-weight: 800;
+            white-space: nowrap;
+            transition: all 0.2s ease;
+          }
+
+          .gb-delete-button:hover:not(:disabled) {
+            background: #dc2626;
+            color: #ffffff;
+          }
+
+          .gb-delete-button:disabled,
+          .gb-button:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
           }
 
           .gb-metrics {
@@ -2836,9 +3265,9 @@ const getStudentTimezone = (
                   String(
                     option.programmeId
                   ) ===
-                    String(
-                      programmeFilter
-                    )
+                  String(
+                    programmeFilter
+                  )
               )
               .map(
                 (
@@ -2973,8 +3402,8 @@ const getStudentTimezone = (
                       programmeOpen
                         ? ""
                         : String(
-                            programme.id
-                          )
+                          programme.id
+                        )
                     );
 
                     setOpenBatchKey(
@@ -3081,11 +3510,10 @@ const getStudentTimezone = (
 
                     <Icon
                       icon="iconamoon:arrow-down-2"
-                      className={`gb-chevron ${
-                        programmeOpen
-                          ? "open"
-                          : ""
-                      }`}
+                      className={`gb-chevron ${programmeOpen
+                        ? "open"
+                        : ""
+                        }`}
                     />
                   </div>
                 </button>
@@ -3143,11 +3571,10 @@ const getStudentTimezone = (
 
                               <Icon
                                 icon="iconamoon:arrow-down-2"
-                                className={`gb-chevron ${
-                                  batchOpen
-                                    ? "open"
-                                    : ""
-                                }`}
+                                className={`gb-chevron ${batchOpen
+                                  ? "open"
+                                  : ""
+                                  }`}
                               />
                             </button>
 
@@ -3347,9 +3774,9 @@ const getStudentTimezone = (
                                                       Number(
                                                         session
                                                           .paymentSummary?.[
-                                                          key
+                                                        key
                                                         ] ||
-                                                          0
+                                                        0
                                                       ) >
                                                       0
                                                   )
@@ -3366,7 +3793,7 @@ const getStudentTimezone = (
                                                         {
                                                           session
                                                             .paymentSummary[
-                                                            key
+                                                          key
                                                           ]
                                                         }{" "}
                                                         {key
@@ -3430,23 +3857,80 @@ const getStudentTimezone = (
                                             </td>
 
                                             <td>
-                                              <button
-                                                type="button"
-                                                className="gb-button"
-                                                onClick={() =>
-                                                  setSelectedSession(
-                                                    {
-                                                      ...session,
-                                                      programme,
-                                                      batch,
-                                                    }
-                                                  )
-                                                }
-                                              >
-                                                <Icon icon="solar:eye-linear" />
+                                              <div className="gb-action-buttons">
+                                                <button
+                                                  type="button"
+                                                  className="gb-button"
+                                                  onClick={() =>
+                                                    setSelectedSession(
+                                                      {
+                                                        ...session,
+                                                        programme,
+                                                        batch,
+                                                      }
+                                                    )
+                                                  }
+                                                  disabled={
+                                                    String(
+                                                      deletingSessionId
+                                                    ) ===
+                                                    String(
+                                                      session.id
+                                                    )
+                                                  }
+                                                >
+                                                  <Icon icon="solar:eye-linear" />
 
-                                                Details
-                                              </button>
+                                                  Details
+                                                </button>
+
+                                                {canDeleteSession(
+                                                  session
+                                                ) ? (
+                                                  <button
+                                                    type="button"
+                                                    className="gb-delete-button"
+                                                    onClick={() =>
+                                                      handleDeleteSession(
+                                                        session,
+                                                        programme,
+                                                        batch
+                                                      )
+                                                    }
+                                                    disabled={
+                                                      String(
+                                                        deletingSessionId
+                                                      ) ===
+                                                      String(
+                                                        session.id
+                                                      )
+                                                    }
+                                                  >
+                                                    {String(
+                                                      deletingSessionId
+                                                    ) ===
+                                                      String(
+                                                        session.id
+                                                      ) ? (
+                                                      <>
+                                                        <span
+                                                          className="spinner-border spinner-border-sm"
+                                                          role="status"
+                                                          aria-hidden="true"
+                                                        />
+
+                                                        Deleting...
+                                                      </>
+                                                    ) : (
+                                                      <>
+                                                        <Icon icon="solar:trash-bin-trash-linear" />
+
+                                                        Delete
+                                                      </>
+                                                    )}
+                                                  </button>
+                                                ) : null}
+                                              </div>
                                             </td>
                                           </tr>
                                         )
@@ -3721,7 +4205,7 @@ const getStudentTimezone = (
                         Booking ID
                       </th>
 
-                     
+
                       <th>
                         Payment Status
                       </th>

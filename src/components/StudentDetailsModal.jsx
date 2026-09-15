@@ -571,7 +571,7 @@ const StudentDetailsModal = ({ show, onClose, userid, seed, onSave }) => {
                   </div>
 
                   <div className="col-md-6">
-                    <label className="form-label">Phone Number</label>
+                    <label className="form-label">Parent Phone Number</label>
                     <input type="text" name="phonenumber" value={formData.phonenumber || ""} onChange={handleChange} className="form-control" />
                   </div>
 

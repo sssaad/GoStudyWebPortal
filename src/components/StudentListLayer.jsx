@@ -1282,7 +1282,7 @@ const StudentListLayer = () => {
                 <th>Student Name</th>
                 <th>Student Email/Username</th>
                 <th>Parent Email</th>
-                <th>Phone Number</th>
+                <th>Parent Phone Number</th>
                 <th>Address</th>
                 <th className="text-center">Action</th>
               </tr>

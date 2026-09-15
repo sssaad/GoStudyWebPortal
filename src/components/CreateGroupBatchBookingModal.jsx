@@ -781,6 +781,7 @@ const CreateGroupBatchBookingModal = ({
   const [studentId, setStudentId] = useState("");
   const [studentTz, setStudentTz] = useState(DEFAULT_PORTAL_DISPLAY_TIMEZONE);
   const [paymentStatus, setPaymentStatus] = useState("Paid");
+  const [sessionType, setSessionType] = useState("Online");
   const [selectedWeeks, setSelectedWeeks] = useState("1");
 
   const [loadingStudents, setLoadingStudents] = useState(false);
@@ -1064,6 +1065,7 @@ const CreateGroupBatchBookingModal = ({
     setStudentId("");
     setStudentTz(DEFAULT_PORTAL_DISPLAY_TIMEZONE);
     setPaymentStatus("Paid");
+    setSessionType("Online");
     setSelectedWeeks("1");
     setError("");
     setCreating(false);
@@ -1154,13 +1156,14 @@ const CreateGroupBatchBookingModal = ({
       price_per_week_at_booking: Number(weeklyPrice || 0).toFixed(2),
       batch_key: programme?.batch_key || "",
       group_key: programme?.group_key || "",
+      batch_createddate: batchCreatedDate,
       booking_createddate: batchCreatedDate,
 
       payment_status: paymentStatus,
       paymentmethod:
         paymentStatus === "Paid" ? "portal_manual" : "portal_unpaid",
       paymentType: "Group",
-      sessionType: "Online",
+      sessionType: sessionType,
       bookingType: "Manual",
 
       sessions: selectedSessions.map((session, index) => {
@@ -1302,8 +1305,9 @@ const CreateGroupBatchBookingModal = ({
             <strong>Batch:</strong> #${payload?.group_batch_id || "-"}<br/>
             <strong>Student:</strong> ${getStudentName(selectedStudent) || "-"}<br/>
             <strong>Timezone:</strong> ${studentTz}<br/>
-            <strong>Payment Status:</strong> ${paymentStatus}<br/>
-            <strong>Duration:</strong> ${selectedWeeksNumber} Week${selectedWeeksNumber > 1 ? "s" : ""
+<strong>Payment Status:</strong> ${paymentStatus}<br/>
+<strong>Session Type:</strong> ${sessionType}<br/>
+<strong>Duration:</strong> ${selectedWeeksNumber} Week${selectedWeeksNumber > 1 ? "s" : ""
         }<br/>
             <strong>Classes:</strong> ${totalSelectedClasses}<br/>
             <strong>Total Amount:</strong> AED ${Number(totalAmount || 0).toFixed(
@@ -1892,6 +1896,20 @@ const CreateGroupBatchBookingModal = ({
             >
               <option value="Paid">Paid</option>
               <option value="Unpaid">Unpaid</option>
+            </select>
+          </div>
+
+          <div className="gb-card">
+            <div className="gb-label">Session Type</div>
+
+            <select
+              className="form-select"
+              value={sessionType}
+              disabled={creating}
+              onChange={(e) => setSessionType(e.target.value)}
+            >
+              <option value="Online">Online</option>
+              <option value="In-Person">In-Person</option>
             </select>
           </div>
 

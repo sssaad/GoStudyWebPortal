@@ -86,6 +86,7 @@ import RoleAccessPage from "./pages/RoleAccessPage";
 import DirectBookingPage from "./pages/DirectBookingPage";
 import InpersonBookingPage from "./pages/InpersonBookingPage";
 import LeadCentrePage from "./pages/LeadCentrePage";
+import ToDoListPage from "./pages/ToDoListPage";
 import StarRatingPage from "./pages/StarRatingPage";
 import StarredPage from "./pages/StarredPage";
 import SwitchPage from "./pages/SwitchPage";
@@ -198,7 +199,7 @@ function App() {
           ["/image-upload", ImageUploadPage],
           ["/invoice-add", InvoiceAddPage],
           ["/teacher-payouts", TeacherPayoutPage],
-          ["/invoice-list", InvoiceListPage] ,
+          ["/invoice-list", InvoiceListPage],
           ["/invoice-edit", InvoiceEditPage],
           ["/teachers-list", TeacherListPage],
           ["/subscription", SubscriptionListPage],
@@ -230,6 +231,7 @@ function App() {
           ["/inperson-bookings", InpersonBookingPage],
 
           ["/leads-centre", LeadCentrePage],
+          ["/todo-list", ToDoListPage],
           ["/registration-requests", RegistrationRequestsPage],
           ["/group-class-enquiries", GroupClassInquiriesPage],
           ["/star-rating", StarRatingPage],

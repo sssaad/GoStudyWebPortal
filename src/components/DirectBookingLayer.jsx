@@ -136,11 +136,10 @@ const AlertToast = ({
 
   return (
     <div
-      className={`lyl-toast ${
-        alertData.type === "success"
+      className={`lyl-toast ${alertData.type === "success"
           ? "success"
           : "error"
-      }`}
+        }`}
     >
       <div className="lyl-toast-content">
         <div className="lyl-toast-title">
@@ -683,16 +682,16 @@ const DirectBookingLayer = () => {
 
     const startDateTime = slotStart
       ? parseBookingDateTime(
-          item,
-          "start"
-        )
+        item,
+        "start"
+      )
       : null;
 
     const endDateTime = slotEnd
       ? parseBookingDateTime(
-          item,
-          "end"
-        )
+        item,
+        "end"
+      )
       : null;
 
     if (endDateTime) {
@@ -704,7 +703,7 @@ const DirectBookingLayer = () => {
         const teacherFeedbackDone =
           Number(
             item?.has_teacher_feedback ||
-              0
+            0
           ) === 1;
 
         return hasRecording ||
@@ -748,7 +747,7 @@ const DirectBookingLayer = () => {
       const teacherFeedbackDone =
         Number(
           item?.has_teacher_feedback ||
-            0
+          0
         ) === 1;
 
       return hasRecording ||
@@ -790,9 +789,9 @@ const DirectBookingLayer = () => {
 
     const startDateTime = slotStart
       ? parseBookingDateTime(
-          item,
-          "start"
-        )
+        item,
+        "start"
+      )
       : null;
 
     if (startDateTime) {
@@ -1017,11 +1016,11 @@ const DirectBookingLayer = () => {
     setRows((previous) =>
       previous.map((row) =>
         String(getBookingId(row)) ===
-        String(bookingId)
+          String(bookingId)
           ? {
-              ...row,
-              ...patch,
-            }
+            ...row,
+            ...patch,
+          }
           : row
       )
     );
@@ -1119,7 +1118,7 @@ const DirectBookingLayer = () => {
       ) {
         throw new Error(
           response?.data?.message ||
-            "Update failed"
+          "Update failed"
         );
       }
 
@@ -1275,27 +1274,27 @@ const DirectBookingLayer = () => {
       const previousValue =
         field === "payment_status"
           ? getPaymentStatusDisplay(
-              item?.payment_status
-            )
+            item?.payment_status
+          )
           : field === "session_type"
             ? getSessionTypeDisplay(
-                item?.session_type
-              )
+              item?.session_type
+            )
             : getAmountValue(item);
 
       const optimisticPatch =
         field === "payment_status"
           ? {
-              payment_status: newValue,
-            }
+            payment_status: newValue,
+          }
           : field === "session_type"
             ? {
-                session_type: newValue,
-              }
+              session_type: newValue,
+            }
             : {
-                booking_amount:
-                  newValue,
-              };
+              booking_amount:
+                newValue,
+            };
 
       patchRow(
         bookingId,
@@ -1310,16 +1309,16 @@ const DirectBookingLayer = () => {
           },
           field === "payment_status"
             ? {
-                payment_status:
-                  newValue,
-              }
+              payment_status:
+                newValue,
+            }
             : field === "session_type"
               ? {
-                  sessionType: newValue,
-                }
+                sessionType: newValue,
+              }
               : {
-                  amount: newValue,
-                }
+                amount: newValue,
+              }
         );
 
         if (field === "amount") {
@@ -1343,18 +1342,18 @@ const DirectBookingLayer = () => {
           bookingId,
           field === "payment_status"
             ? {
-                payment_status:
-                  previousValue,
-              }
+              payment_status:
+                previousValue,
+            }
             : field === "session_type"
               ? {
-                  session_type:
-                    previousValue,
-                }
+                session_type:
+                  previousValue,
+              }
               : {
-                  booking_amount:
-                    previousValue,
-                }
+                booking_amount:
+                  previousValue,
+              }
         );
 
         if (field === "amount") {
@@ -1371,7 +1370,7 @@ const DirectBookingLayer = () => {
           "error",
           "Update Failed",
           error?.message ||
-            "Something went wrong."
+          "Something went wrong."
         );
       } finally {
         setConfirmLoading(false);
@@ -1399,21 +1398,21 @@ const DirectBookingLayer = () => {
           Array.isArray(response)
             ? response
             : Array.isArray(
-                  response?.data
-                )
+              response?.data
+            )
               ? response.data
               : Array.isArray(
-                    response
-                      ?.getall_bookings
-                  )
+                response
+                  ?.getall_bookings
+              )
                 ? response
-                    .getall_bookings
+                  .getall_bookings
                 : Array.isArray(
-                      response
-                        ?.getallbookings
-                    )
+                  response
+                    ?.getallbookings
+                )
                   ? response
-                      .getallbookings
+                    .getallbookings
                   : [];
 
         /*
@@ -1510,20 +1509,20 @@ const DirectBookingLayer = () => {
 
     const startMoment = startDate
       ? moment.tz(
-          startDate,
-          "YYYY-MM-DD",
-          true,
-          TZ
-        )
+        startDate,
+        "YYYY-MM-DD",
+        true,
+        TZ
+      )
       : null;
 
     const endMoment = endDate
       ? moment.tz(
-          endDate,
-          "YYYY-MM-DD",
-          true,
-          TZ
-        )
+        endDate,
+        "YYYY-MM-DD",
+        true,
+        TZ
+      )
       : null;
 
     return (rows || []).filter(
@@ -1579,7 +1578,7 @@ const DirectBookingLayer = () => {
         const matchesBookingStatus =
           !normalizedBookingStatus ||
           norm(bookingStatus) ===
-            normalizedBookingStatus;
+          normalizedBookingStatus;
 
         const matchesPaymentStatus =
           !normalizedPaymentStatus ||
@@ -1588,7 +1587,7 @@ const DirectBookingLayer = () => {
               item?.payment_status
             )
           ) ===
-            normalizedPaymentStatus;
+          normalizedPaymentStatus;
 
         const matchesSessionType =
           !normalizedSessionType ||
@@ -1599,7 +1598,7 @@ const DirectBookingLayer = () => {
         const matchesBookingType =
           !normalizedBookingType ||
           norm(item?.booking_type) ===
-            normalizedBookingType;
+          normalizedBookingType;
 
         const itemDate =
           getDubaiBookDateMoment(item);
@@ -1608,18 +1607,18 @@ const DirectBookingLayer = () => {
           startMoment
             ? itemDate
               ? itemDate.isSameOrAfter(
-                  startMoment,
-                  "day"
-                )
+                startMoment,
+                "day"
+              )
               : false
             : true;
 
         const matchesEndDate = endMoment
           ? itemDate
             ? itemDate.isSameOrBefore(
-                endMoment,
-                "day"
-              )
+              endMoment,
+              "day"
+            )
             : false
           : true;
 
@@ -1648,7 +1647,7 @@ const DirectBookingLayer = () => {
   const totalPages =
     Math.ceil(
       filteredData.length /
-        itemsPerPage
+      itemsPerPage
     ) || 1;
 
   const safePage = Math.min(
@@ -1691,8 +1690,8 @@ const DirectBookingLayer = () => {
           "S.L": index + 1,
           "Book Date": bookingDate
             ? bookingDate.format(
-                "DD MMM YYYY"
-              )
+              "DD MMM YYYY"
+            )
             : "-",
           "Student Name":
             item?.studentname || "-",
@@ -1723,9 +1722,9 @@ const DirectBookingLayer = () => {
             item?.booking_type || "-",
           Status: status
             ? status
-                .charAt(0)
-                .toUpperCase() +
-              status.slice(1)
+              .charAt(0)
+              .toUpperCase() +
+            status.slice(1)
             : "-",
         };
       }
@@ -1800,8 +1799,8 @@ const DirectBookingLayer = () => {
           index + 1,
           bookingDate
             ? bookingDate.format(
-                "DD MMM YYYY"
-              )
+              "DD MMM YYYY"
+            )
             : "-",
           item?.studentname || "-",
           item?.teachername || "-",
@@ -1824,9 +1823,9 @@ const DirectBookingLayer = () => {
           item?.booking_type || "-",
           status
             ? status
-                .charAt(0)
-                .toUpperCase() +
-              status.slice(1)
+              .charAt(0)
+              .toUpperCase() +
+            status.slice(1)
             : "-",
         ];
       }
@@ -2442,11 +2441,10 @@ const DirectBookingLayer = () => {
                         <td>
                           <button
                             type="button"
-                            className={`btn btn-sm ${
-                              rescheduleDisabled
+                            className={`btn btn-sm ${rescheduleDisabled
                                 ? "btn-outline-secondary"
                                 : "btn-outline-primary"
-                            }`}
+                              }`}
                             disabled={
                               rescheduleDisabled
                             }
@@ -2487,8 +2485,8 @@ const DirectBookingLayer = () => {
                         <td>
                           {bookingDate
                             ? bookingDate.format(
-                                "DD MMM YYYY"
-                              )
+                              "DD MMM YYYY"
+                            )
                             : "-"}
                         </td>
 
@@ -2558,7 +2556,7 @@ const DirectBookingLayer = () => {
                               }}
                               value={
                                 amountDraftMap[
-                                  bookingId
+                                bookingId
                                 ] ??
                                 getAmountValue(
                                   item
@@ -2597,7 +2595,7 @@ const DirectBookingLayer = () => {
                               onClick={() => {
                                 const value =
                                   amountDraftMap[
-                                    bookingId
+                                  bookingId
                                   ] ??
                                   getAmountValue(
                                     item
@@ -2702,9 +2700,9 @@ const DirectBookingLayer = () => {
                           >
                             {status
                               ? status
-                                  .charAt(0)
-                                  .toUpperCase() +
-                                status.slice(1)
+                                .charAt(0)
+                                .toUpperCase() +
+                              status.slice(1)
                               : "-"}
                           </span>
                         </td>
@@ -2717,7 +2715,7 @@ const DirectBookingLayer = () => {
           </table>
         </div>
 
-        <div className="d-flex justify-content-between mt-3">
+        <div className="d-flex flex-wrap justify-content-between align-items-center gap-3 mt-3">
           <span>
             Showing{" "}
             {filteredData.length === 0
@@ -2732,32 +2730,40 @@ const DirectBookingLayer = () => {
             entries
           </span>
 
-          <ul className="pagination">
-            {Array.from({
-              length: totalPages,
-            }).map((_, index) => (
-              <li
-                key={index}
-                className={`page-item ${
-                  safePage === index + 1
-                    ? "active"
-                    : ""
-                }`}
-              >
-                <button
-                  type="button"
-                  className="page-link"
-                  onClick={() =>
-                    setCurrentPage(
-                      index + 1
-                    )
-                  }
-                >
-                  {index + 1}
-                </button>
-              </li>
-            ))}
-          </ul>
+          <div className="d-flex align-items-center gap-2">
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-secondary"
+              onClick={() =>
+                setCurrentPage((page) =>
+                  Math.max(1, page - 1)
+                )
+              }
+              disabled={safePage <= 1}
+            >
+              Previous
+            </button>
+
+            <span className="small">
+              Page {safePage} of {totalPages}
+            </span>
+
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-secondary"
+              onClick={() =>
+                setCurrentPage((page) =>
+                  Math.min(
+                    totalPages,
+                    page + 1
+                  )
+                )
+              }
+              disabled={safePage >= totalPages}
+            >
+              Next
+            </button>
+          </div>
         </div>
       </div>
 
