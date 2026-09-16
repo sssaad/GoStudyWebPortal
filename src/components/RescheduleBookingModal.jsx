@@ -400,10 +400,10 @@ const normalizeTimezones = (
 
         return value
           ? {
-              id: "",
-              value,
-              label: item,
-            }
+            id: "",
+            value,
+            label: item,
+          }
           : null;
       }
 
@@ -475,11 +475,11 @@ const normalizeSubjects = (
 
   const bookingSubject = booking?.subjectname
     ? [
-        {
-          subjectid: booking?.subjectid,
-          subjectname: booking?.subjectname,
-        },
-      ]
+      {
+        subjectid: booking?.subjectid,
+        subjectname: booking?.subjectname,
+      },
+    ]
     : [];
 
   return uniqueBy(
@@ -536,8 +536,7 @@ const normalizeAvailability = (profileData) => {
       ),
 
     (item) =>
-      `${item.day}|${item.timefrom}|${item.timeto}|${
-        item.timezoneid ?? ""
+      `${item.day}|${item.timefrom}|${item.timeto}|${item.timezoneid ?? ""
       }`
   );
 };
@@ -852,8 +851,8 @@ const RescheduleBookingModal = ({
             normalizeBookedSlots(
               bookedResponse,
               booking?.teacherTime_zone ||
-                booking?.teacher_timezone ||
-                studentTimezone
+              booking?.teacher_timezone ||
+              studentTimezone
             )
           );
         } else {
@@ -947,11 +946,11 @@ const RescheduleBookingModal = ({
 
     return getSafeTimezone(
       timezoneById[
-        String(profile?.timezoneid)
+      String(profile?.timezoneid)
       ] ||
-        booking?.teacherTime_zone ||
-        booking?.teacher_timezone ||
-        ADMIN_TIMEZONE
+      booking?.teacherTime_zone ||
+      booking?.teacher_timezone ||
+      ADMIN_TIMEZONE
     );
   }, [
     teacherProfileData,
@@ -1054,11 +1053,11 @@ const RescheduleBookingModal = ({
   const canGoPreviousWeek = useMemo(() => {
     const activeWeek = selectedWeekStart
       ? selectedWeekStart
-          .clone()
-          .startOf("day")
+        .clone()
+        .startOf("day")
       : currentWeekStart
-          .clone()
-          .startOf("day");
+        .clone()
+        .startOf("day");
 
     return activeWeek.isAfter(
       currentWeekStart
@@ -1074,14 +1073,44 @@ const RescheduleBookingModal = ({
   const bookedRanges = useMemo(
     () =>
       teacherBookedSlots
+        .filter((item) => {
+          const currentBookingId = String(
+            firstFilled(
+              booking?.bookingid,
+              booking?.id,
+              booking?.bookteacherid,
+              ""
+            )
+          );
+
+          const bookedItemId = String(
+            firstFilled(
+              item?.bookingid,
+              item?.bookingId,
+              item?.bookteacherid,
+              ""
+            )
+          );
+
+          // Current booking ko apne aap se conflict nahi karna
+          if (
+            currentBookingId &&
+            bookedItemId &&
+            currentBookingId === bookedItemId
+          ) {
+            return false;
+          }
+
+          return true;
+        })
         .map((item) => {
           const sourceTimezone =
             getSafeTimezone(
               timezoneById[
-                String(item?.timezoneid)
+              String(item?.timezoneid)
               ] ||
-                item?.timezone ||
-                teacherBaseTimezone
+              item?.timezone ||
+              teacherBaseTimezone
             );
 
           let start =
@@ -1123,6 +1152,9 @@ const RescheduleBookingModal = ({
       teacherBookedSlots,
       timezoneById,
       teacherBaseTimezone,
+      booking?.bookingid,
+      booking?.id,
+      booking?.bookteacherid,
     ]
   );
 
@@ -1168,9 +1200,9 @@ const RescheduleBookingModal = ({
       const sourceTimezone =
         getSafeTimezone(
           timezoneById[
-            String(item?.timezoneid)
+          String(item?.timezoneid)
           ] ||
-            teacherBaseTimezone
+          teacherBaseTimezone
         );
 
       const sourceWeekStart =
@@ -1326,9 +1358,9 @@ const RescheduleBookingModal = ({
       ).some(
         (slot) =>
           slot.start ===
-            selectedSlot.start &&
+          selectedSlot.start &&
           slot.end ===
-            selectedSlot.end &&
+          selectedSlot.end &&
           !slot.isBooked
       );
 
@@ -1442,25 +1474,25 @@ const RescheduleBookingModal = ({
 
   const canSubmit = Boolean(
     selectedSubjectId &&
-      selectedDate &&
-      studentTimezone &&
-      studentTimezoneId &&
-      !profileLoading &&
-      !profileError &&
-      !bookedSlotsWarning &&
-      !submitting &&
+    selectedDate &&
+    studentTimezone &&
+    studentTimezoneId &&
+    !profileLoading &&
+    !profileError &&
+    !bookedSlotsWarning &&
+    !submitting &&
+    (
       (
-        (
-          !useCustomSlot &&
-          selectedSlot &&
-          !selectedSlot.isBooked
-        ) ||
-        (
-          useCustomSlot &&
-          customStartTime &&
-          customEndTime
-        )
+        !useCustomSlot &&
+        selectedSlot &&
+        !selectedSlot.isBooked
+      ) ||
+      (
+        useCustomSlot &&
+        customStartTime &&
+        customEndTime
       )
+    )
   );
 
   const handleSubmit = async () => {
@@ -1623,89 +1655,111 @@ const RescheduleBookingModal = ({
         );
       }
 
-      const latestBookedResponse =
-        await fetchTeacherBookedSlots(
-          booking.teacherid,
-          headers
-        );
+      // Normal listed slots must respect teacher booking conflicts.
+      // Custom Slot is an admin override and may overlap existing bookings.
+      if (!useCustomSlot) {
+        const latestBookedResponse =
+          await fetchTeacherBookedSlots(
+            booking.teacherid,
+            headers
+          );
 
-      if (
-        Number(
-          latestBookedResponse?.statusCode
-        ) !== 200
-      ) {
-        throw new Error(
-          "Booked slots could not be verified. Please try again."
-        );
-      }
+        if (
+          Number(
+            latestBookedResponse?.statusCode
+          ) !== 200
+        ) {
+          throw new Error(
+            "Booked slots could not be verified. Please try again."
+          );
+        }
 
-      const latestBookedSlots =
-        normalizeBookedSlots(
-          latestBookedResponse,
-          teacherBaseTimezone
-        );
+        const latestBookedSlots =
+          normalizeBookedSlots(
+            latestBookedResponse,
+            teacherBaseTimezone
+          );
 
-      const hasConflict =
-        latestBookedSlots.some((item) => {
-          if (
-            item?.bookingid &&
-            String(item.bookingid) ===
-              String(booking.bookingid)
-          ) {
-            return false;
-          }
+        const hasConflict =
+          latestBookedSlots.some((item) => {
+            const currentBookingId = String(
+              firstFilled(
+                booking?.bookingid,
+                booking?.id,
+                booking?.bookteacherid,
+                ""
+              )
+            );
 
-          const sourceTimezone =
-            getSafeTimezone(
-              timezoneById[
+            const bookedItemId = String(
+              firstFilled(
+                item?.bookingid,
+                item?.bookingId,
+                item?.bookteacherid,
+                ""
+              )
+            );
+
+            if (
+              currentBookingId &&
+              bookedItemId &&
+              currentBookingId === bookedItemId
+            ) {
+              return false;
+            }
+
+            const sourceTimezone =
+              getSafeTimezone(
+                timezoneById[
                 String(item?.timezoneid)
-              ] ||
+                ] ||
                 item?.timezone ||
                 teacherBaseTimezone
-            );
+              );
 
-          let bookedStart =
-            parseDateTimeInTimezone(
-              item?.bookdate,
-              item?.slot_start,
-              sourceTimezone
-            );
+            let bookedStart =
+              parseDateTimeInTimezone(
+                item?.bookdate,
+                item?.slot_start,
+                sourceTimezone
+              );
 
-          let bookedEnd =
-            parseDateTimeInTimezone(
-              item?.bookdate,
-              item?.slot_end,
-              sourceTimezone
-            );
+            let bookedEnd =
+              parseDateTimeInTimezone(
+                item?.bookdate,
+                item?.slot_end,
+                sourceTimezone
+              );
 
-          if (!bookedStart || !bookedEnd) {
-            return false;
-          }
+            if (!bookedStart || !bookedEnd) {
+              return false;
+            }
 
-          if (
-            bookedEnd.isSameOrBefore(
+            if (
+              bookedEnd.isSameOrBefore(
+                bookedStart
+              )
+            ) {
+              bookedEnd.add(1, "day");
+            }
+
+            return isOverlap(
+              adminStart,
+              adminEnd,
               bookedStart
-            )
-          ) {
-            bookedEnd.add(1, "day");
-          }
+                .clone()
+                .tz(ADMIN_TIMEZONE),
+              bookedEnd
+                .clone()
+                .tz(ADMIN_TIMEZONE)
+            );
+          });
 
-          return isOverlap(
-            adminStart,
-            adminEnd,
-            bookedStart
-              .clone()
-              .tz(ADMIN_TIMEZONE),
-            bookedEnd
-              .clone()
-              .tz(ADMIN_TIMEZONE)
+        if (hasConflict) {
+          throw new Error(
+            "The selected time slot has just been booked. Please select another slot."
           );
-        });
-
-      if (hasConflict) {
-        throw new Error(
-          "The selected time slot has just been booked. Please select another slot."
-        );
+        }
       }
 
       const studentStart =
@@ -1734,7 +1788,7 @@ const RescheduleBookingModal = ({
 
         newSubjectid: Number(
           selectedSubject?.subjectid ??
-            booking?.subjectid
+          booking?.subjectid
         ),
       };
 
@@ -1772,7 +1826,7 @@ const RescheduleBookingModal = ({
 
       setSubmitError(
         error?.message ||
-          "The session could not be rescheduled. Please try again."
+        "The session could not be rescheduled. Please try again."
       );
     } finally {
       submitLockRef.current = false;
@@ -1869,22 +1923,22 @@ const RescheduleBookingModal = ({
   const currentDate =
     currentSessionInDubai
       ? currentSessionInDubai.start.format(
-          "DD MMM YYYY"
-        )
+        "DD MMM YYYY"
+      )
       : "-";
 
   const currentTime =
     currentSessionInDubai
       ? `${currentSessionInDubai.start.format(
-          "HH:mm"
-        )} - ${currentSessionInDubai.end.format(
-          "HH:mm"
-        )}`
+        "HH:mm"
+      )} - ${currentSessionInDubai.end.format(
+        "HH:mm"
+      )}`
       : `${formatClock(
-          booking?.slot_start
-        )} - ${formatClock(
-          booking?.slot_end
-        )}`;
+        booking?.slot_start
+      )} - ${formatClock(
+        booking?.slot_end
+      )}`;
 
   const selectedDateLabel =
     parseSelectedDate(selectedDate)?.format(
@@ -1899,10 +1953,10 @@ const RescheduleBookingModal = ({
 
   const timezoneWarning =
     !profileLoading &&
-    (
-      !studentTimezone ||
-      !studentTimezoneId
-    )
+      (
+        !studentTimezone ||
+        !studentTimezoneId
+      )
       ? "The student's timezone or timezone ID could not be loaded. Rescheduling is disabled."
       : "";
 
@@ -2525,11 +2579,11 @@ const RescheduleBookingModal = ({
 
                           const isActive =
                             selectedDate ===
-                              dayKey &&
+                            dayKey &&
                             selectedSlot?.start ===
-                              slot.start &&
+                            slot.start &&
                             selectedSlot?.end ===
-                              slot.end &&
+                            slot.end &&
                             !isBooked;
 
                           return (
