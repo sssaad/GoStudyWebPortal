@@ -10,6 +10,7 @@ import { Icon } from "@iconify/react/dist/iconify.js";
 import moment from "moment-timezone";
 import { getAllBookings } from "../api/getAllBookings";
 import { getToken } from "../api/getToken";
+import GroupRescheduleSessionModal from "./GroupRescheduleSessionModal";
 
 const RUN_STORED_PROCEDURE_URL =
   "https://api.learnyourlanguage.org/RestController_Thirdparty.php?view=runStoredProcedure";
@@ -92,6 +93,11 @@ const GroupBookingListLayer = () => {
     setDeletingSessionId,
   ] = useState("");
 
+  const [
+    rescheduleModal,
+    setRescheduleModal,
+  ] = useState(null);
+
   const norm = (value) =>
     String(value ?? "")
       .trim()
@@ -133,6 +139,29 @@ const GroupBookingListLayer = () => {
     return moment.tz.zone(
       timezone
     )
+      ? timezone
+      : TZ;
+  };
+
+  const getGroupSessionTimezone = (
+    item
+  ) => {
+    const timezone =
+      cleanTimezone(
+        item?.group_session_timezone
+      ) ||
+      cleanTimezone(
+        item?.group_timezone
+      ) ||
+      cleanTimezone(
+        item?.timezone_location
+      ) ||
+      cleanTimezone(
+        item?.timezone
+      ) ||
+      TZ;
+
+    return moment.tz.zone(timezone)
       ? timezone
       : TZ;
   };
@@ -218,12 +247,14 @@ const GroupBookingListLayer = () => {
     item,
     type = "start"
   ) => {
+    const isGroupSession =
+      Number(item?.is_group_booking || 0) === 1 ||
+      Boolean(item?.group_live_session_id);
+
     /*
-     * First preference:
-     * bookteacher date/time.
-     *
-     * These values are stored in the
-     * student's booking timezone.
+     * Group list must always use the official
+     * group_live_sessions values, never a single
+     * student's local booking time.
      */
     const bookingDate =
       item?.bookdate || "";
@@ -241,30 +272,41 @@ const GroupBookingListLayer = () => {
      * Fallback:
      * official group session fields.
      */
-    const date =
-      hasBookteacherDateTime
-        ? bookingDate
-        : item?.group_session_date ||
+    const date = isGroupSession
+      ? item?.group_session_date ||
+        item?.bookdate ||
         item?.booking_date ||
-        "";
+        ""
+      : hasBookteacherDateTime
+        ? bookingDate
+        : item?.booking_date ||
+          "";
 
-    const time =
-      hasBookteacherDateTime
-        ? bookingTime
-        : type === "end"
-          ? item?.group_session_end ||
+    const time = isGroupSession
+      ? type === "end"
+        ? item?.group_session_end ||
+          item?.slot_end ||
           item?.booking_end_time ||
           "00:00:00"
-          : item?.group_session_start ||
+        : item?.group_session_start ||
+          item?.slot_start ||
           item?.booking_start_time ||
-          "00:00:00";
+          "00:00:00"
+      : hasBookteacherDateTime
+        ? bookingTime
+        : type === "end"
+          ? item?.booking_end_time ||
+            "00:00:00"
+          : item?.booking_start_time ||
+            "00:00:00";
 
     if (!date) {
       return null;
     }
 
-    const sourceTimezone =
-      hasBookteacherDateTime
+    const sourceTimezone = isGroupSession
+      ? getGroupSessionTimezone(item)
+      : hasBookteacherDateTime
         ? getStudentTimezone(item)
         : TZ;
 
@@ -300,7 +342,8 @@ const GroupBookingListLayer = () => {
     }
 
     /*
-     * Portal always displays Asia/Dubai.
+     * Portal displays every group session in the
+     * fixed Admin UAE timezone.
      */
     return parsed.tz(TZ);
   };
@@ -331,6 +374,26 @@ const GroupBookingListLayer = () => {
       )
       : "";
   };
+
+  const hasGroupFeedback = (
+    sessionRows
+  ) =>
+    (sessionRows || []).some(
+      (item) => {
+        const value =
+          item?.has_group_feedback ??
+          item?.hasGroupFeedback ??
+          item?.group_feedback_id ??
+          item?.feedback_id ??
+          0;
+
+        return (
+          value === true ||
+          Number(value) > 0 ||
+          norm(value) === "true"
+        );
+      }
+    );
 
   const getSessionStatus = (
     sessionRows,
@@ -1374,6 +1437,12 @@ const GroupBookingListLayer = () => {
                                 "start"
                               );
 
+                            const rawEndDate =
+                              parseSessionDateTime(
+                                representativeRow,
+                                "end"
+                              );
+
                             const paymentSummary =
                               students.reduce(
                                 (
@@ -1433,6 +1502,15 @@ const GroupBookingListLayer = () => {
 
                               rawDate,
 
+                              rawEndDate,
+
+                              sessionType:
+                                representativeRow
+                                  ?.session_type ||
+                                representativeRow
+                                  ?.sessionType ||
+                                "Online",
+
                               capacity:
                                 Number(
                                   representativeRow
@@ -1449,6 +1527,11 @@ const GroupBookingListLayer = () => {
                               hasRecording:
                                 Boolean(
                                   recordingUrl
+                                ),
+
+                              hasFeedback:
+                                hasGroupFeedback(
+                                  sessionRows
                                 ),
 
                               status:
@@ -1994,6 +2077,33 @@ const GroupBookingListLayer = () => {
     );
   };
 
+  const canRescheduleSession = (
+    session
+  ) => {
+    if (!session) {
+      return false;
+    }
+
+    /*
+     * MeritHub supports both Online and In-Person group sessions.
+     * The session type must never block rescheduling here.
+     */
+    const sessionId = Number(
+      session.id
+    );
+
+    return (
+      norm(session.status) ===
+        "upcoming" &&
+      !session.hasRecording &&
+      !session.hasFeedback &&
+      Number.isInteger(
+        sessionId
+      ) &&
+      sessionId > 0
+    );
+  };
+
 
   const handleDeleteSession =
     async (
@@ -2423,6 +2533,13 @@ The session setup and other recurring sessions will remain unchanged.
 
           .gb-muted {
             color: var(--gb-muted);
+          }
+
+          .gb-timezone-note {
+            margin-top: 5px;
+            color: var(--gb-primary);
+            font-size: 12px;
+            font-weight: 700;
           }
 
           .gb-button {
@@ -3110,6 +3227,10 @@ The session setup and other recurring sessions will remain unchanged.
             sessions, students,
             teachers, payments and
             recordings.
+          </p>
+
+          <p className="gb-timezone-note mb-0">
+            All booking dates and times are shown in Asia/Dubai timezone.
           </p>
         </div>
 
@@ -3884,6 +4005,36 @@ The session setup and other recurring sessions will remain unchanged.
                                                   Details
                                                 </button>
 
+                                                {canRescheduleSession(
+                                                  session
+                                                ) ? (
+                                                  <button
+                                                    type="button"
+                                                    className="gb-button"
+                                                    onClick={() =>
+                                                      setRescheduleModal(
+                                                        {
+                                                          session,
+                                                          programme,
+                                                          batch,
+                                                        }
+                                                      )
+                                                    }
+                                                    disabled={
+                                                      String(
+                                                        deletingSessionId
+                                                      ) ===
+                                                      String(
+                                                        session.id
+                                                      )
+                                                    }
+                                                  >
+                                                    <Icon icon="solar:calendar-mark-linear" />
+
+                                                    Reschedule
+                                                  </button>
+                                                ) : null}
+
                                                 {canDeleteSession(
                                                   session
                                                 ) ? (
@@ -4315,6 +4466,30 @@ The session setup and other recurring sessions will remain unchanged.
           </div>
         </div>
       ) : null}
+
+      <GroupRescheduleSessionModal
+        isOpen={Boolean(rescheduleModal)}
+        session={
+          rescheduleModal?.session ||
+          null
+        }
+        programme={
+          rescheduleModal?.programme ||
+          null
+        }
+        batch={
+          rescheduleModal?.batch ||
+          null
+        }
+        onClose={() =>
+          setRescheduleModal(null)
+        }
+        onSuccess={async () => {
+          setRescheduleModal(null);
+          setSelectedSession(null);
+          await fetchGroupBookings();
+        }}
+      />
 
       {recordingModal ? (
         <div
