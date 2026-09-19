@@ -1030,92 +1030,183 @@ const RoleAccessLayer = () => {
       hasRecordingUrl(item);
 
     if (isGroupBooking(item)) {
-      /*
-       * Recording confirms that the
-       * group class happened. It also
-       * overrides stale cancellation flags.
-       */
-      if (hasRecording) {
-        return "completed";
-      }
+  const relatedRows =
+    Array.isArray(
+      item?._group_related_rows
+    ) &&
+      item._group_related_rows.length
+      ? item._group_related_rows
+      : [item];
 
-      const relatedRows =
-        Array.isArray(
-          item?._group_related_rows
-        ) &&
-          item._group_related_rows
-            .length
-          ? item._group_related_rows
-          : [item];
+  /*
+   * One cancelled assistant row must
+   * not cancel the full group session.
+   */
+  const allRowsCancelled =
+    relatedRows.length > 0 &&
+    relatedRows.every(
+      (row) =>
+        Number(
+          row?.is_cancelled || 0
+        ) === 1 ||
+        norm(
+          row?.group_session_status
+        ) === "cancelled"
+    );
 
-      /*
-       * One cancelled assistant row must
-       * not cancel the full group session.
-       */
-      const allRowsCancelled =
-        relatedRows.length > 0 &&
-        relatedRows.every(
-          (row) =>
-            Number(
-              row?.is_cancelled ||
-              0
-            ) === 1 ||
-            norm(
-              row
-                ?.group_session_status
-            ) === "cancelled"
-        );
+  const isGroupInPerson =
+    isInPersonSession(item);
 
-      if (
-        !startDateTime?.isValid?.()
-      ) {
-        return allRowsCancelled
-          ? "cancelled"
-          : "upcoming";
-      }
-
-      if (
-        !endDateTime?.isValid?.()
-      ) {
-        endDateTime =
-          startDateTime
-            .clone()
-            .add(
-              1,
-              "hour"
-            );
-      }
-
-      if (
-        now.isBefore(
-          startDateTime
-        )
-      ) {
-        return allRowsCancelled
-          ? "cancelled"
-          : "upcoming";
-      }
-
-      if (
-        now.isSameOrAfter(
-          startDateTime
-        ) &&
-        now.isSameOrBefore(
-          endDateTime
-        )
-      ) {
-        return allRowsCancelled
-          ? "cancelled"
-          : "ongoing";
-      }
-
-      /*
-       * Past group session:
-       * recording = Completed
-       * no recording = Missed
-       */
-      return "missed";
+  /*
+   * GROUP IN-PERSON
+   *
+   * Same logic as One-to-One In-Person.
+   * inperson_status is the primary status
+   * source when available.
+   */
+  if (isGroupInPerson) {
+    if (allRowsCancelled) {
+      return "cancelled";
     }
+
+    /*
+     * Normally main booking row should
+     * contain inperson_status.
+     *
+     * relatedRows fallback is kept in case
+     * the value exists on another returned
+     * group row.
+     */
+    const inpersonStatusRow =
+      [item, ...relatedRows].find(
+        (row) =>
+          Boolean(
+            getInpersonStatusDisplay(
+              row?.inperson_status
+            )
+          )
+      );
+
+    const inpersonDbStatus =
+      getInpersonStatusDisplay(
+        inpersonStatusRow
+          ?.inperson_status
+      );
+
+    if (inpersonDbStatus) {
+      return norm(
+        inpersonDbStatus
+      );
+    }
+
+    /*
+     * Fallback only when DB status
+     * is not available.
+     */
+    if (
+      !startDateTime?.isValid?.()
+    ) {
+      return "upcoming";
+    }
+
+    if (
+      !endDateTime?.isValid?.()
+    ) {
+      endDateTime =
+        startDateTime
+          .clone()
+          .add(
+            1,
+            "hour"
+          );
+    }
+
+    if (
+      now.isBefore(
+        startDateTime
+      )
+    ) {
+      return "upcoming";
+    }
+
+    if (
+      now.isSameOrAfter(
+        startDateTime
+      ) &&
+      now.isSameOrBefore(
+        endDateTime
+      )
+    ) {
+      return "ongoing";
+    }
+
+    /*
+     * Same fallback behaviour as
+     * One-to-One In-Person.
+     */
+    return "completed";
+  }
+
+  /*
+   * GROUP ONLINE
+   *
+   * Keep existing behaviour unchanged.
+   * Recording confirms completion.
+   */
+  if (hasRecording) {
+    return "completed";
+  }
+
+  if (
+    !startDateTime?.isValid?.()
+  ) {
+    return allRowsCancelled
+      ? "cancelled"
+      : "upcoming";
+  }
+
+  if (
+    !endDateTime?.isValid?.()
+  ) {
+    endDateTime =
+      startDateTime
+        .clone()
+        .add(
+          1,
+          "hour"
+        );
+  }
+
+  if (
+    now.isBefore(
+      startDateTime
+    )
+  ) {
+    return allRowsCancelled
+      ? "cancelled"
+      : "upcoming";
+  }
+
+  if (
+    now.isSameOrAfter(
+      startDateTime
+    ) &&
+    now.isSameOrBefore(
+      endDateTime
+    )
+  ) {
+    return allRowsCancelled
+      ? "cancelled"
+      : "ongoing";
+  }
+
+  /*
+   * Online group session:
+   * recording = Completed
+   * no recording = Missed
+   */
+  return "missed";
+}
 
     if (
       Number(

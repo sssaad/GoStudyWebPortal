@@ -412,11 +412,11 @@ const MasterLayout = ({ children }) => {
                 dotClass="blue-dot"
               />
 
-              {/* <ChildMenu
+              <ChildMenu
                 to="/todo-list"
                 label="To Do List"
                 dotClass="green-dot"
-              /> */}
+              />
             </ParentMenu>
 
             <ParentMenu
