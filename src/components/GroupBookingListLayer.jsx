@@ -274,31 +274,31 @@ const GroupBookingListLayer = () => {
      */
     const date = isGroupSession
       ? item?.group_session_date ||
-        item?.bookdate ||
-        item?.booking_date ||
-        ""
+      item?.bookdate ||
+      item?.booking_date ||
+      ""
       : hasBookteacherDateTime
         ? bookingDate
         : item?.booking_date ||
-          "";
+        "";
 
     const time = isGroupSession
       ? type === "end"
         ? item?.group_session_end ||
-          item?.slot_end ||
-          item?.booking_end_time ||
-          "00:00:00"
+        item?.slot_end ||
+        item?.booking_end_time ||
+        "00:00:00"
         : item?.group_session_start ||
-          item?.slot_start ||
-          item?.booking_start_time ||
-          "00:00:00"
+        item?.slot_start ||
+        item?.booking_start_time ||
+        "00:00:00"
       : hasBookteacherDateTime
         ? bookingTime
         : type === "end"
           ? item?.booking_end_time ||
-            "00:00:00"
+          "00:00:00"
           : item?.booking_start_time ||
-            "00:00:00";
+          "00:00:00";
 
     if (!date) {
       return null;
@@ -395,6 +395,36 @@ const GroupBookingListLayer = () => {
       }
     );
 
+  const getSessionType = (sessionRows = []) => {
+    const safeRows = Array.isArray(sessionRows)
+      ? sessionRows
+      : [];
+
+    const rowWithType = safeRows.find(
+      (item) =>
+        item?.session_type ||
+        item?.sessionType
+    );
+
+    const rawType =
+      rowWithType?.session_type ||
+      rowWithType?.sessionType ||
+      "Online";
+
+    const type = norm(rawType)
+      .replace(/_/g, "-")
+      .replace(/\s+/g, "-");
+
+    if (
+      type === "in-person" ||
+      type === "inperson"
+    ) {
+      return "In-Person";
+    }
+
+    return "Online";
+  };
+
   const getSessionStatus = (
     sessionRows,
     recordingUrl
@@ -422,7 +452,27 @@ const GroupBookingListLayer = () => {
      * recording + cancelled flag
      * still becomes Completed.
      */
-    if (recordingUrl) {
+    const sessionType =
+      getSessionType(safeRows);
+
+    const feedbackExists =
+      hasGroupFeedback(safeRows);
+
+    /*
+     * Online:
+     * Recording proves completion.
+     *
+     * In-Person:
+     * Recording is not required.
+     * Group feedback proves completion.
+     */
+    if (
+      recordingUrl ||
+      (
+        sessionType === "In-Person" &&
+        feedbackExists
+      )
+    ) {
       return "Completed";
     }
 
@@ -1505,11 +1555,7 @@ const GroupBookingListLayer = () => {
                               rawEndDate,
 
                               sessionType:
-                                representativeRow
-                                  ?.session_type ||
-                                representativeRow
-                                  ?.sessionType ||
-                                "Online",
+                                getSessionType(sessionRows),
 
                               capacity:
                                 Number(
@@ -2062,7 +2108,10 @@ const GroupBookingListLayer = () => {
      * Recording exists means we do not
      * allow this delete flow.
      */
-    if (session.hasRecording) {
+    if (
+      session.hasRecording ||
+      session.hasFeedback
+    ) {
       return false;
     }
 
@@ -2094,7 +2143,7 @@ const GroupBookingListLayer = () => {
 
     return (
       norm(session.status) ===
-        "upcoming" &&
+      "upcoming" &&
       !session.hasRecording &&
       !session.hasFeedback &&
       Number.isInteger(
@@ -3736,6 +3785,10 @@ The session setup and other recurring sessions will remain unchanged.
                                         </th>
 
                                         <th>
+                                          Session Type
+                                        </th>
+
+                                        <th>
                                           Status
                                         </th>
 
@@ -3929,6 +3982,18 @@ The session setup and other recurring sessions will remain unchanged.
                                                     )
                                                   )}
                                               </div>
+                                            </td>
+
+                                            <td>
+                                              <span
+                                                className={
+                                                  session.sessionType === "In-Person"
+                                                    ? "badge bg-warning text-dark"
+                                                    : "badge bg-info"
+                                                }
+                                              >
+                                                {session.sessionType || "Online"}
+                                              </span>
                                             </td>
 
                                             <td>
@@ -4227,6 +4292,24 @@ The session setup and other recurring sessions will remain unchanged.
                       {
                         selectedSession.status
                       }
+                    </span>
+                  </div>
+                </div>
+
+                <div className="gb-info">
+                  <label>
+                    Session Type
+                  </label>
+
+                  <div>
+                    <span
+                      className={
+                        selectedSession.sessionType === "In-Person"
+                          ? "badge bg-warning text-dark"
+                          : "badge bg-info"
+                      }
+                    >
+                      {selectedSession.sessionType || "Online"}
                     </span>
                   </div>
                 </div>

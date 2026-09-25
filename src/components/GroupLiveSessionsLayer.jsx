@@ -23,15 +23,16 @@ const API_HEADERS = {
   "Content-Type": "application/json",
 };
 
-const STATUS_OPTIONS = ["active", "completed", "cancelled"];
+const STATUS_OPTIONS = ["active", "paused", "completed", "cancelled"];
 const PORTAL_TIMEZONE = "Asia/Dubai";
 
 const getStatusLabel = (status) => {
   const s = String(status || "").toLowerCase();
 
   if (s === "active") return "Active";
+  if (s === "paused") return "Paused";
   if (s === "completed") return "Completed";
-  if (s === "cancelled") return "Paused";
+  if (s === "cancelled") return "Cancelled";
 
   return status || "-";
 };
@@ -221,8 +222,9 @@ const getStatusBadgeClass = (status) => {
   const s = String(status || "").toLowerCase();
 
   if (s === "active") return "bg-success";
+  if (s === "paused") return "bg-warning text-dark";
   if (s === "completed") return "bg-primary";
-  if (s === "cancelled") return "bg-warning text-dark";
+  if (s === "cancelled") return "bg-danger";
 
   return "bg-secondary";
 };
@@ -303,16 +305,8 @@ const isCancelledStatus = (value) => {
 };
 
 const isSessionVisible = (session) => {
-  if (!session) return false;
-
-  if (isCancelledStatus(session?.status)) return false;
-  if (isCancelledStatus(session?.week_status)) return false;
-  if (isCancelledStatus(session?.batch_week_status)) return false;
-  if (isCancelledStatus(session?.group_batch_week_status)) return false;
-
-  return true;
+  return !!session;
 };
-
 const compareSessions = (a, b) => {
   const weekA = getSessionWeekNo(a);
   const weekB = getSessionWeekNo(b);
@@ -455,9 +449,13 @@ const getAssistantTeachersLabel = (session) => {
 const GroupProgrammeDetailsModal = ({ open, programme, onClose }) => {
   if (!open || !programme) return null;
 
-  const allSessions = Array.isArray(programme.sessions)
-    ? dedupeExactSessionDuplicates(programme.sessions)
-    : [];
+  const sourceSessions = Array.isArray(programme?.all_sessions)
+    ? programme.all_sessions
+    : Array.isArray(programme?.sessions)
+      ? programme.sessions
+      : [];
+
+  const allSessions = dedupeExactSessionDuplicates(sourceSessions);
 
   /*
    * Portal view must stay transparent.
@@ -1049,6 +1047,9 @@ const GroupLiveSessionsLayer = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
 
+  const ITEMS_PER_PAGE = 10;
+  const [currentPage, setCurrentPage] = useState(1);
+
   const [statusDraftMap, setStatusDraftMap] = useState({});
   const [savingStatusMap, setSavingStatusMap] = useState({});
 
@@ -1121,7 +1122,6 @@ const GroupLiveSessionsLayer = () => {
 
   const filteredRows = useMemo(() => {
     const search = String(searchTerm || "").toLowerCase().trim();
-    const status = String(statusFilter || "").toLowerCase().trim();
 
     return (rows || []).filter((item) => {
       const fullText = [
@@ -1148,14 +1148,9 @@ const GroupLiveSessionsLayer = () => {
         .join(" ")
         .toLowerCase();
 
-      const itemStatus = String(item?.status || "").toLowerCase();
-
-      return (
-        (!search || fullText.includes(search)) &&
-        (!status || itemStatus === status)
-      );
+      return !search || fullText.includes(search);
     });
-  }, [rows, searchTerm, statusFilter]);
+  }, [rows, searchTerm]);
 
   const groupedProgrammes = useMemo(() => {
     const map = {};
@@ -1172,7 +1167,7 @@ const GroupLiveSessionsLayer = () => {
           ? `batch_${groupBatchId}`
           : getWeekKey(item?.session_date);
 
-      const groupKey = [programmeId, status, batchKey].join("_");
+      const groupKey = [programmeId, batchKey].join("_");
 
       if (!map[groupKey]) {
         map[groupKey] = {
@@ -1188,7 +1183,10 @@ const GroupLiveSessionsLayer = () => {
           programme_description: item?.programme_description || "",
           weekly_price: item?.weekly_price || 0,
           capacity: item?.capacity || 0,
-          status: item?.status || "active",
+          status:
+            item?.curriculum_status ||
+            item?.status ||
+            "active",
           createddate: item?.createddate || "",
           batch_key: batchKey,
           batch_label:
@@ -1224,8 +1222,41 @@ const GroupLiveSessionsLayer = () => {
 
     return Object.values(map)
       .map((programme) => {
-        const sessions = dedupeExactSessionDuplicates(programme.sessions);
+        const allSessions = dedupeExactSessionDuplicates(programme.sessions);
+
+        const nonCancelledSessions = allSessions.filter(
+          (session) => !isCancelledStatus(session?.status)
+        );
+
+        // If some sessions are still valid, removed/cancelled classes
+        // must not create/count as a separate curriculum.
+        // If ALL sessions are cancelled, keep them so the whole
+        // cancelled curriculum can still be displayed.
+        const sessions =
+          nonCancelledSessions.length > 0
+            ? nonCancelledSessions
+            : allSessions;
+
         const baseSessions = getBaseSessionsFromList(sessions);
+
+        const sessionStatuses = sessions.map((session) =>
+          String(session?.status || "active").toLowerCase()
+        );
+
+        let programmeStatus = "active";
+
+        if (sessionStatuses.includes("active")) {
+          programmeStatus = "active";
+        } else if (sessionStatuses.includes("paused")) {
+          programmeStatus = "paused";
+        } else if (sessionStatuses.includes("completed")) {
+          programmeStatus = "completed";
+        } else if (
+          sessionStatuses.length > 0 &&
+          sessionStatuses.every((status) => status === "cancelled")
+        ) {
+          programmeStatus = "cancelled";
+        }
 
         const capacities = sessions.map((s) => Number(s?.capacity || 0));
         const seats = sessions.map((s) =>
@@ -1252,7 +1283,17 @@ const GroupLiveSessionsLayer = () => {
 
         return {
           ...programme,
+
+          // Whole curriculum status from SP
+          status: programme?.status || programmeStatus,
+
+          // Existing operational sessions
+          // Booking/Edit/list isi ko use karte rahenge
           sessions,
+
+          // View modal ko complete history milegi
+          all_sessions: allSessions,
+
           base_sessions: baseSessions,
           base_classes: baseSessions.length,
           recurrence_total_weeks: recurrenceTotalWeeks,
@@ -1263,11 +1304,25 @@ const GroupLiveSessionsLayer = () => {
           booked_count: bookedSessions,
         };
       })
+      .filter((programme) => {
+        const selectedStatus = String(
+          statusFilter || ""
+        ).toLowerCase().trim();
+
+        if (!selectedStatus) return true;
+
+        return (
+          String(programme?.status || "")
+            .toLowerCase()
+            .trim() === selectedStatus
+        );
+      })
       .sort((a, b) => {
         const statusOrder = {
           active: 1,
-          completed: 2,
-          cancelled: 3,
+          paused: 2,
+          completed: 3,
+          cancelled: 4,
         };
 
         const sa = statusOrder[String(a.status || "").toLowerCase()] || 9;
@@ -1301,7 +1356,29 @@ const GroupLiveSessionsLayer = () => {
 
         return Number(a.programme_id) - Number(b.programme_id);
       });
-  }, [filteredRows]);
+  }, [filteredRows, statusFilter]);
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(groupedProgrammes.length / ITEMS_PER_PAGE)
+  );
+
+  const paginatedProgrammes = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    const endIndex = startIndex + ITEMS_PER_PAGE;
+
+    return groupedProgrammes.slice(startIndex, endIndex);
+  }, [groupedProgrammes, currentPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   const patchRowsStatus = (sessionIds, nextStatus) => {
     const idSet = new Set(sessionIds.map((id) => String(id)));
@@ -1418,8 +1495,30 @@ const GroupLiveSessionsLayer = () => {
       return;
     }
 
-    const sessionIds = (programme?.sessions || [])
-      .map((s) => s?.id)
+    const programmeSessions = programme?.sessions || [];
+
+    const hasNonCancelledSessions = programmeSessions.some(
+      (session) => !isCancelledStatus(session?.status)
+    );
+
+    const sessionIds = programmeSessions
+      .filter((session) => {
+        // If whole batch is being cancelled, update everything.
+        if (nextStatus === "cancelled") {
+          return true;
+        }
+
+        // If every session is currently cancelled, allow the whole batch
+        // to be changed back to another status.
+        if (!hasNonCancelledSessions) {
+          return true;
+        }
+
+        // Mixed batch:
+        // keep individually removed/cancelled classes cancelled.
+        return !isCancelledStatus(session?.status);
+      })
+      .map((session) => session?.id)
       .filter(Boolean);
 
     if (sessionIds.length === 0) {
@@ -1799,8 +1898,9 @@ const GroupLiveSessionsLayer = () => {
           >
             <option value="">Status: All</option>
             <option value="active">Active</option>
+            <option value="paused">Paused</option>
             <option value="completed">Completed</option>
-            <option value="cancelled">Paused</option>
+            <option value="cancelled">Cancelled</option>
           </select>
 
           <button
@@ -1827,275 +1927,351 @@ const GroupLiveSessionsLayer = () => {
             </div>
           </div>
         ) : (
-          <div className="table-responsive">
-            <table className="table bordered-table mb-0 gl-main-table">
-              <thead>
-                <tr>
-                  <th>S.L</th>
-                  <th>Curriculum</th>
-                  <th>Stage</th>
-                  <th>Group Session Price</th>
-                  <th>Classes</th>
-                  <th>Capacity</th>
-                  <th>Booked Seats</th>
-                  <th>Seats Left</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {groupedProgrammes.length === 0 ? (
+          <>
+            <div className="table-responsive">
+              <table className="table bordered-table mb-0 gl-main-table">
+                <thead>
                   <tr>
-                    <td
-                      colSpan="10"
-                      className="text-center py-4 text-secondary-light"
-                    >
-                      No live group curriculums found.
-                    </td>
+                    <th>S.L</th>
+                    <th>Curriculum</th>
+                    <th>Stage</th>
+                    <th>Group Session Price</th>
+                    <th>Classes</th>
+                    <th>Capacity</th>
+                    <th>Booked Seats</th>
+                    <th>Seats Left</th>
+                    <th>Status</th>
+                    <th>Action</th>
                   </tr>
-                ) : (
-                  groupedProgrammes.map((programme, index) => {
-                    const groupKey =
-                      programme.group_key ||
-                      `${programme.programme_id}_${programme.status}_${programme.createddate}_${index}`;
+                </thead>
 
-                    const saving = isStatusSaving(groupKey);
+                <tbody>
+                  {groupedProgrammes.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan="10"
+                        className="text-center py-4 text-secondary-light"
+                      >
+                        No live group curriculums found.
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedProgrammes.map((programme, index) => {
+                      const groupKey =
+                        programme.group_key ||
+                        `${programme.programme_id}_${programme.status}_${programme.createddate}_${index}`;
 
-                    const currentStatus = String(
-                      programme.status || "active"
-                    ).toLowerCase();
+                      const saving = isStatusSaving(groupKey);
 
-                    const draftStatus = String(
-                      statusDraftMap[groupKey] || currentStatus
-                    ).toLowerCase();
+                      const currentStatus = String(
+                        programme.status || "active"
+                      ).toLowerCase();
 
-                    const isCompleted = currentStatus === "completed";
-                    const isActive = currentStatus === "active";
-                    const bookedCount = getProgrammeBookedCount(programme);
-                    const editAllowed = true;
-                    const hasBookings = bookedCount > 0;
+                      const draftStatus = String(
+                        statusDraftMap[groupKey] || currentStatus
+                      ).toLowerCase();
 
-                    const weeklyClasses = Number(
-                      programme.base_classes || programme.total_classes || 0
-                    );
+                      const isCompleted = currentStatus === "completed";
+                      const isActive = currentStatus === "active";
+                      const bookedCount = getProgrammeBookedCount(programme);
+                      const editAllowed = true;
+                      const hasBookings = bookedCount > 0;
 
-                    return (
-                      <tr key={groupKey}>
-                        <td>{index + 1}</td>
+                      const weeklyClasses = Number(
+                        programme.base_classes || programme.total_classes || 0
+                      );
 
-                        <td>
-                          <div className="gl-programme-title">
-                            {programme.programme_name}
-                          </div>
+                      return (
+                        <tr key={groupKey}>
+                          <td>
+                            {(currentPage - 1) * ITEMS_PER_PAGE + index + 1}
+                          </td>
 
-                          <div className="gl-programme-desc">
-                            {getShortDescription(
-                              programme.programme_description,
-                              95
-                            )}
-                          </div>
+                          <td>
+                            <div className="gl-programme-title">
+                              {programme.programme_name}
+                            </div>
 
-                          {programme.group_batch_id ? (
+                            <div className="gl-programme-desc">
+                              {getShortDescription(
+                                programme.programme_description,
+                                95
+                              )}
+                            </div>
+
+                            {programme.group_batch_id ? (
+                              <div className="gl-batch-text">
+                                Batch #{programme.group_batch_id}
+                              </div>
+                            ) : programme.createddate ? (
+                              <div className="gl-batch-text">
+                                Batch: {formatDate(programme.createddate)}
+                              </div>
+                            ) : null}
+
+                            <div
+                              className={`gl-visibility-badge ${Number(programme.show_on_web ?? 1) === 1
+                                ? "gl-visibility-public"
+                                : "gl-visibility-private"
+                                }`}
+                            >
+                              <Icon
+                                icon={
+                                  Number(programme.show_on_web ?? 1) === 1
+                                    ? "mdi:eye-outline"
+                                    : "mdi:eye-off-outline"
+                                }
+                              />
+                              {Number(programme.show_on_web ?? 1) === 1
+                                ? "Public"
+                                : "Private"}
+                            </div>
+
                             <div className="gl-batch-text">
-                              Batch #{programme.group_batch_id}
+                              Web Sort Order:{" "}
+                              <strong>
+                                {Number(programme.web_sort_order || 0) === 0
+                                  ? "Default"
+                                  : programme.web_sort_order}
+                              </strong>
                             </div>
-                          ) : programme.createddate ? (
-                            <div className="gl-batch-text">
-                              Batch: {formatDate(programme.createddate)}
-                            </div>
-                          ) : null}
+                          </td>
 
-                          <div
-                            className={`gl-visibility-badge ${Number(programme.show_on_web ?? 1) === 1
-                              ? "gl-visibility-public"
-                              : "gl-visibility-private"
-                              }`}
-                          >
-                            <Icon
-                              icon={
-                                Number(programme.show_on_web ?? 1) === 1
-                                  ? "mdi:eye-outline"
-                                  : "mdi:eye-off-outline"
-                              }
-                            />
-                            {Number(programme.show_on_web ?? 1) === 1
-                              ? "Public"
-                              : "Private"}
-                          </div>
+                          <td>{programme.programme_stage || "-"}</td>
 
-                          <div className="gl-batch-text">
-                            Web Sort Order:{" "}
-                            <strong>
-                              {Number(programme.web_sort_order || 0) === 0
-                                ? "Default"
-                                : programme.web_sort_order}
-                            </strong>
-                          </div>
-                        </td>
+                          <td>
+                            AED {Number(programme.weekly_price || 0).toFixed(2)}
+                          </td>
 
-                        <td>{programme.programme_stage || "-"}</td>
+                          <td>
+                            <span className="badge bg-success">
+                              {weeklyClasses}{" "}
+                              {weeklyClasses === 1 ? "Class" : "Classes"} / week
+                            </span>
 
-                        <td>
-                          AED {Number(programme.weekly_price || 0).toFixed(2)}
-                        </td>
+                            {Number(programme.recurrence_total_weeks || 1) > 1 ? (
+                              <div className="gl-batch-text mt-1">
+                                {Number(programme.recurrence_total_weeks || 1)} weeks •{" "}
+                                {Number(programme.total_sessions || 0)} total sessions
+                              </div>
+                            ) : null}
+                          </td>
 
-                        <td>
-                          <span className="badge bg-success">
-                            {weeklyClasses}{" "}
-                            {weeklyClasses === 1 ? "Class" : "Classes"} / week
-                          </span>
+                          <td>{programme.capacity || "-"}</td>
+                          <td>{bookedCount}</td>
+                          <td>{programme.seats_left ?? "-"}</td>
 
-                          {Number(programme.recurrence_total_weeks || 1) > 1 ? (
-                            <div className="gl-batch-text mt-1">
-                              {Number(programme.recurrence_total_weeks || 1)} weeks •{" "}
-                              {Number(programme.total_sessions || 0)} total sessions
-                            </div>
-                          ) : null}
-                        </td>
-
-                        <td>{programme.capacity || "-"}</td>
-                        <td>{bookedCount}</td>
-                        <td>{programme.seats_left ?? "-"}</td>
-
-                        <td>
-                          {isCompleted ? (
-                            <div className="gl-status-update-wrap">
-                              <span
-                                className={`badge ${getStatusBadgeClass(
-                                  currentStatus
-                                )}`}
-                              >
-                                {getStatusLabel(currentStatus)}
-                              </span>
-                            </div>
-                          ) : (
-                            <div className="gl-status-update-wrap">
-                              <div className="mb-1">
+                          <td>
+                            {isCompleted ? (
+                              <div className="gl-status-update-wrap">
                                 <span
                                   className={`badge ${getStatusBadgeClass(
                                     currentStatus
                                   )}`}
                                 >
-                                  Current: {getStatusLabel(currentStatus)}
+                                  {getStatusLabel(currentStatus)}
                                 </span>
                               </div>
+                            ) : (
+                              <div className="gl-status-update-wrap">
+                                <div className="mb-1">
+                                  <span
+                                    className={`badge ${getStatusBadgeClass(
+                                      currentStatus
+                                    )}`}
+                                  >
+                                    Current: {getStatusLabel(currentStatus)}
+                                  </span>
+                                </div>
 
-                              <div className="gl-status-update-row">
-                                <select
-                                  className="form-select form-select-sm gl-status-select"
-                                  value={draftStatus}
-                                  disabled={saving}
-                                  onChange={(e) =>
-                                    handleStatusDraftChange(
-                                      groupKey,
-                                      e.target.value
-                                    )
-                                  }
-                                >
-                                  {STATUS_OPTIONS.map((status) => (
-                                    <option key={status} value={status}>
-                                      {getStatusLabel(status)}
-                                    </option>
-                                  ))}
-                                </select>
+                                <div className="gl-status-update-row">
+                                  <select
+                                    className="form-select form-select-sm gl-status-select"
+                                    value={draftStatus}
+                                    disabled={saving}
+                                    onChange={(e) =>
+                                      handleStatusDraftChange(
+                                        groupKey,
+                                        e.target.value
+                                      )
+                                    }
+                                  >
+                                    {STATUS_OPTIONS.map((status) => (
+                                      <option key={status} value={status}>
+                                        {getStatusLabel(status)}
+                                      </option>
+                                    ))}
+                                  </select>
 
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-outline-primary gl-status-save-btn"
+                                    disabled={
+                                      saving || draftStatus === currentStatus
+                                    }
+                                    onClick={() =>
+                                      handleSaveBatchStatus(programme)
+                                    }
+                                  >
+                                    {saving ? "Saving..." : "Save"}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </td>
+
+                          <td>
+                            <div className="d-flex gap-2 flex-wrap">
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-primary d-inline-flex align-items-center gap-1 gl-action-btn"
+                                onClick={() => openDetailsModal(programme)}
+                              >
+                                <Icon icon="mdi:eye-outline" />
+                                View
+                              </button>
+
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-warning d-inline-flex align-items-center gap-1 gl-action-btn gl-action-edit-btn"
+                                disabled={!editAllowed}
+                                title={
+                                  hasBookings
+                                    ? "Update Teachers & Assistant Teachers"
+                                    : "Edit Curriculum"
+                                }
+                                onClick={() => openEditModal(programme)}
+                              >
+                                <Icon icon="mdi:pencil-outline" />
+                                {hasBookings ? "Teachers" : "Edit"}
+                              </button>
+
+                              {isActive ? (
                                 <button
                                   type="button"
-                                  className="btn btn-sm btn-outline-primary gl-status-save-btn"
-                                  disabled={
-                                    saving || draftStatus === currentStatus
-                                  }
-                                  onClick={() =>
-                                    handleSaveBatchStatus(programme)
-                                  }
+                                  className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1 gl-copy-link-btn"
+                                  onClick={async () => {
+                                    const link = `https://gostudy.ae/group-tuition/${programme.programme_id}${programme.group_batch_id
+                                      ? `?group_batch_id=${programme.group_batch_id}`
+                                      : ""
+                                      }`;
+
+                                    try {
+                                      await navigator.clipboard.writeText(link);
+
+                                      Swal.fire({
+                                        icon: "success",
+                                        title: "Link Copied",
+                                        text: "The batch direct link has been copied successfully.",
+                                        timer: 1300,
+                                        showConfirmButton: false,
+                                      });
+                                    } catch (err) {
+                                      Swal.fire({
+                                        icon: "info",
+                                        title: "Copy Batch Link",
+                                        html: `<div style="word-break:break-all;">${link}</div>`,
+                                      });
+                                    }
+                                  }}
                                 >
-                                  {saving ? "Saving..." : "Save"}
+                                  <Icon icon="mdi:link-variant" />
+                                  Copy Link
                                 </button>
-                              </div>
+                              ) : null}
+
+                              {isActive ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-success d-inline-flex align-items-center gap-1 gl-action-btn"
+                                  onClick={() => openBookingModal(programme)}
+                                >
+                                  <Icon icon="mdi:calendar-plus-outline" />
+                                  Book
+                                </button>
+                              ) : null}
                             </div>
-                          )}
-                        </td>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
 
-                        <td>
-                          <div className="d-flex gap-2 flex-wrap">
-                            <button
-                              type="button"
-                              className="btn btn-sm btn-primary d-inline-flex align-items-center gap-1 gl-action-btn"
-                              onClick={() => openDetailsModal(programme)}
-                            >
-                              <Icon icon="mdi:eye-outline" />
-                              View
-                            </button>
+            </div>
+            {groupedProgrammes.length > 0 && (
+              <div
+                className="d-flex flex-wrap align-items-center justify-content-between gap-3 mt-3 px-2 pb-2"
+                style={{ minHeight: "54px" }}
+              >
+                {/* Left Side */}
+                <div className="text-secondary-light">
+                  Showing{" "}
+                  <strong>
+                    {(currentPage - 1) * ITEMS_PER_PAGE + 1}
+                  </strong>{" "}
+                  to{" "}
+                  <strong>
+                    {Math.min(
+                      currentPage * ITEMS_PER_PAGE,
+                      groupedProgrammes.length
+                    )}
+                  </strong>{" "}
+                  of{" "}
+                  <strong>{groupedProgrammes.length}</strong>{" "}
+                  entries
+                </div>
 
-                            <button
-                              type="button"
-                              className="btn btn-sm btn-warning d-inline-flex align-items-center gap-1 gl-action-btn gl-action-edit-btn"
-                              disabled={!editAllowed}
-                              title={
-                                hasBookings
-                                  ? "Update Teachers & Assistant Teachers"
-                                  : "Edit Curriculum"
-                              }
-                              onClick={() => openEditModal(programme)}
-                            >
-                              <Icon icon="mdi:pencil-outline" />
-                              {hasBookings ? "Teachers" : "Edit"}
-                            </button>
+                {/* Right Side */}
+                <div className="d-flex align-items-center gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary btn-sm"
+                    style={{
+                      minWidth: "88px",
+                      height: "40px",
+                    }}
+                    disabled={currentPage === 1}
+                    onClick={() =>
+                      setCurrentPage((prev) => Math.max(prev - 1, 1))
+                    }
+                  >
+                    Previous
+                  </button>
 
-                            {isActive ? (
-                              <button
-                                type="button"
-                                className="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1 gl-copy-link-btn"
-                                onClick={async () => {
-                                  const link = `https://gostudy.ae/group-tuition/${programme.programme_id}${programme.group_batch_id
-                                    ? `?group_batch_id=${programme.group_batch_id}`
-                                    : ""
-                                    }`;
+                  <div
+                    className="px-1"
+                    style={{
+                      minWidth: "90px",
+                      textAlign: "center",
+                      whiteSpace: "nowrap",
+                      fontWeight: 500,
+                    }}
+                  >
+                    Page {currentPage} of {totalPages}
+                  </div>
 
-                                  try {
-                                    await navigator.clipboard.writeText(link);
-
-                                    Swal.fire({
-                                      icon: "success",
-                                      title: "Link Copied",
-                                      text: "The batch direct link has been copied successfully.",
-                                      timer: 1300,
-                                      showConfirmButton: false,
-                                    });
-                                  } catch (err) {
-                                    Swal.fire({
-                                      icon: "info",
-                                      title: "Copy Batch Link",
-                                      html: `<div style="word-break:break-all;">${link}</div>`,
-                                    });
-                                  }
-                                }}
-                              >
-                                <Icon icon="mdi:link-variant" />
-                                Copy Link
-                              </button>
-                            ) : null}
-
-                            {isActive ? (
-                              <button
-                                type="button"
-                                className="btn btn-sm btn-success d-inline-flex align-items-center gap-1 gl-action-btn"
-                                onClick={() => openBookingModal(programme)}
-                              >
-                                <Icon icon="mdi:calendar-plus-outline" />
-                                Book
-                              </button>
-                            ) : null}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                  <button
+                    type="button"
+                    className="btn btn-outline-secondary btn-sm"
+                    style={{
+                      minWidth: "60px",
+                      height: "40px",
+                    }}
+                    disabled={currentPage === totalPages}
+                    onClick={() =>
+                      setCurrentPage((prev) =>
+                        Math.min(prev + 1, totalPages)
+                      )
+                    }
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 
