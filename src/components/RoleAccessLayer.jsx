@@ -91,8 +91,8 @@ const ConfirmActionModal = ({
       >
         <div
           className={`lyl-modal-icon ${isDanger
-              ? "danger"
-              : ""
+            ? "danger"
+            : ""
             }`}
         >
           !
@@ -119,8 +119,8 @@ const ConfirmActionModal = ({
           <button
             type="button"
             className={`lyl-btn ${isDanger
-                ? "lyl-btn-danger"
-                : "lyl-btn-primary"
+              ? "lyl-btn-danger"
+              : "lyl-btn-primary"
               }`}
             onClick={onConfirm}
             disabled={loading}
@@ -148,9 +148,9 @@ const AlertToast = ({
   return (
     <div
       className={`lyl-toast ${alertData.type ===
-          "success"
-          ? "success"
-          : "error"
+        "success"
+        ? "success"
+        : "error"
         }`}
     >
       <div className="lyl-toast-content">
@@ -690,6 +690,24 @@ const RoleAccessLayer = () => {
     )}`;
   };
 
+  const getSubjectName = (
+    item
+  ) => {
+    const subjectName = [
+      item?.subjectname,
+      item?.subject_name,
+      item?.group_subject_name,
+      item?.group_subjectname,
+      item?.subject,
+    ].find(
+      (value) =>
+        typeof value === "string" &&
+        value.trim()
+    );
+
+    return subjectName?.trim() || "-";
+  };
+
   const getBookingCategory = (
     item
   ) =>
@@ -1030,183 +1048,183 @@ const RoleAccessLayer = () => {
       hasRecordingUrl(item);
 
     if (isGroupBooking(item)) {
-  const relatedRows =
-    Array.isArray(
-      item?._group_related_rows
-    ) &&
-      item._group_related_rows.length
-      ? item._group_related_rows
-      : [item];
+      const relatedRows =
+        Array.isArray(
+          item?._group_related_rows
+        ) &&
+          item._group_related_rows.length
+          ? item._group_related_rows
+          : [item];
 
-  /*
-   * One cancelled assistant row must
-   * not cancel the full group session.
-   */
-  const allRowsCancelled =
-    relatedRows.length > 0 &&
-    relatedRows.every(
-      (row) =>
-        Number(
-          row?.is_cancelled || 0
-        ) === 1 ||
-        norm(
-          row?.group_session_status
-        ) === "cancelled"
-    );
-
-  const isGroupInPerson =
-    isInPersonSession(item);
-
-  /*
-   * GROUP IN-PERSON
-   *
-   * Same logic as One-to-One In-Person.
-   * inperson_status is the primary status
-   * source when available.
-   */
-  if (isGroupInPerson) {
-    if (allRowsCancelled) {
-      return "cancelled";
-    }
-
-    /*
-     * Normally main booking row should
-     * contain inperson_status.
-     *
-     * relatedRows fallback is kept in case
-     * the value exists on another returned
-     * group row.
-     */
-    const inpersonStatusRow =
-      [item, ...relatedRows].find(
-        (row) =>
-          Boolean(
-            getInpersonStatusDisplay(
-              row?.inperson_status
-            )
-          )
-      );
-
-    const inpersonDbStatus =
-      getInpersonStatusDisplay(
-        inpersonStatusRow
-          ?.inperson_status
-      );
-
-    if (inpersonDbStatus) {
-      return norm(
-        inpersonDbStatus
-      );
-    }
-
-    /*
-     * Fallback only when DB status
-     * is not available.
-     */
-    if (
-      !startDateTime?.isValid?.()
-    ) {
-      return "upcoming";
-    }
-
-    if (
-      !endDateTime?.isValid?.()
-    ) {
-      endDateTime =
-        startDateTime
-          .clone()
-          .add(
-            1,
-            "hour"
-          );
-    }
-
-    if (
-      now.isBefore(
-        startDateTime
-      )
-    ) {
-      return "upcoming";
-    }
-
-    if (
-      now.isSameOrAfter(
-        startDateTime
-      ) &&
-      now.isSameOrBefore(
-        endDateTime
-      )
-    ) {
-      return "ongoing";
-    }
-
-    /*
-     * Same fallback behaviour as
-     * One-to-One In-Person.
-     */
-    return "completed";
-  }
-
-  /*
-   * GROUP ONLINE
-   *
-   * Keep existing behaviour unchanged.
-   * Recording confirms completion.
-   */
-  if (hasRecording) {
-    return "completed";
-  }
-
-  if (
-    !startDateTime?.isValid?.()
-  ) {
-    return allRowsCancelled
-      ? "cancelled"
-      : "upcoming";
-  }
-
-  if (
-    !endDateTime?.isValid?.()
-  ) {
-    endDateTime =
-      startDateTime
-        .clone()
-        .add(
-          1,
-          "hour"
+      /*
+       * One cancelled assistant row must
+       * not cancel the full group session.
+       */
+      const allRowsCancelled =
+        relatedRows.length > 0 &&
+        relatedRows.every(
+          (row) =>
+            Number(
+              row?.is_cancelled || 0
+            ) === 1 ||
+            norm(
+              row?.group_session_status
+            ) === "cancelled"
         );
-  }
 
-  if (
-    now.isBefore(
-      startDateTime
-    )
-  ) {
-    return allRowsCancelled
-      ? "cancelled"
-      : "upcoming";
-  }
+      const isGroupInPerson =
+        isInPersonSession(item);
 
-  if (
-    now.isSameOrAfter(
-      startDateTime
-    ) &&
-    now.isSameOrBefore(
-      endDateTime
-    )
-  ) {
-    return allRowsCancelled
-      ? "cancelled"
-      : "ongoing";
-  }
+      /*
+       * GROUP IN-PERSON
+       *
+       * Same logic as One-to-One In-Person.
+       * inperson_status is the primary status
+       * source when available.
+       */
+      if (isGroupInPerson) {
+        if (allRowsCancelled) {
+          return "cancelled";
+        }
 
-  /*
-   * Online group session:
-   * recording = Completed
-   * no recording = Missed
-   */
-  return "missed";
-}
+        /*
+         * Normally main booking row should
+         * contain inperson_status.
+         *
+         * relatedRows fallback is kept in case
+         * the value exists on another returned
+         * group row.
+         */
+        const inpersonStatusRow =
+          [item, ...relatedRows].find(
+            (row) =>
+              Boolean(
+                getInpersonStatusDisplay(
+                  row?.inperson_status
+                )
+              )
+          );
+
+        const inpersonDbStatus =
+          getInpersonStatusDisplay(
+            inpersonStatusRow
+              ?.inperson_status
+          );
+
+        if (inpersonDbStatus) {
+          return norm(
+            inpersonDbStatus
+          );
+        }
+
+        /*
+         * Fallback only when DB status
+         * is not available.
+         */
+        if (
+          !startDateTime?.isValid?.()
+        ) {
+          return "upcoming";
+        }
+
+        if (
+          !endDateTime?.isValid?.()
+        ) {
+          endDateTime =
+            startDateTime
+              .clone()
+              .add(
+                1,
+                "hour"
+              );
+        }
+
+        if (
+          now.isBefore(
+            startDateTime
+          )
+        ) {
+          return "upcoming";
+        }
+
+        if (
+          now.isSameOrAfter(
+            startDateTime
+          ) &&
+          now.isSameOrBefore(
+            endDateTime
+          )
+        ) {
+          return "ongoing";
+        }
+
+        /*
+         * Same fallback behaviour as
+         * One-to-One In-Person.
+         */
+        return "completed";
+      }
+
+      /*
+       * GROUP ONLINE
+       *
+       * Keep existing behaviour unchanged.
+       * Recording confirms completion.
+       */
+      if (hasRecording) {
+        return "completed";
+      }
+
+      if (
+        !startDateTime?.isValid?.()
+      ) {
+        return allRowsCancelled
+          ? "cancelled"
+          : "upcoming";
+      }
+
+      if (
+        !endDateTime?.isValid?.()
+      ) {
+        endDateTime =
+          startDateTime
+            .clone()
+            .add(
+              1,
+              "hour"
+            );
+      }
+
+      if (
+        now.isBefore(
+          startDateTime
+        )
+      ) {
+        return allRowsCancelled
+          ? "cancelled"
+          : "upcoming";
+      }
+
+      if (
+        now.isSameOrAfter(
+          startDateTime
+        ) &&
+        now.isSameOrBefore(
+          endDateTime
+        )
+      ) {
+        return allRowsCancelled
+          ? "cancelled"
+          : "ongoing";
+      }
+
+      /*
+       * Online group session:
+       * recording = Completed
+       * no recording = Missed
+       */
+      return "missed";
+    }
 
     if (
       Number(
@@ -3096,6 +3114,10 @@ const RoleAccessLayer = () => {
           item?.teachername ||
           "",
 
+          getSubjectName(
+            item
+          ),
+
           ...getGroupAssistantNames(
             item
           ),
@@ -3359,6 +3381,11 @@ const RoleAccessLayer = () => {
                 item
               ),
 
+            "Subject Name":
+              getSubjectName(
+                item
+              ),
+
             "Slot Start":
               formatDubaiBookingTime(
                 item,
@@ -3459,7 +3486,11 @@ const RoleAccessLayer = () => {
 
   const exportToPDF = () => {
     const document =
-      new jsPDF();
+      new jsPDF(
+        "l",
+        "mm",
+        "a4"
+      );
 
     document.setFontSize(16);
 
@@ -3474,6 +3505,7 @@ const RoleAccessLayer = () => {
       "Book Date",
       "Student Name",
       "Booked Teacher",
+      "Subject Name",
       "Slot Start",
       "Slot End",
       "Amount",
@@ -3514,6 +3546,10 @@ const RoleAccessLayer = () => {
             "-",
 
             getTeacherExportText(
+              item
+            ),
+
+            getSubjectName(
               item
             ),
 
@@ -4521,6 +4557,10 @@ const RoleAccessLayer = () => {
                 </th>
 
                 <th>
+                  Subject Name
+                </th>
+
+                <th>
                   Slot Start
                 </th>
 
@@ -4567,7 +4607,7 @@ const RoleAccessLayer = () => {
                 0 ? (
                 <tr>
                   <td
-                    colSpan={16}
+                    colSpan={17}
                     className="text-center"
                   >
                     No records found.
@@ -4670,8 +4710,8 @@ const RoleAccessLayer = () => {
                           <button
                             type="button"
                             className={`btn btn-sm ${rescheduleDisabled
-                                ? "btn-outline-secondary"
-                                : "btn-outline-primary"
+                              ? "btn-outline-secondary"
+                              : "btn-outline-primary"
                               }`}
                             onClick={() => {
                               if (
@@ -4780,6 +4820,12 @@ const RoleAccessLayer = () => {
                               </div>
                             ) : null}
                           </div>
+                        </td>
+
+                        <td>
+                          {getSubjectName(
+                            item
+                          )}
                         </td>
 
                         <td>
@@ -4914,9 +4960,9 @@ const RoleAccessLayer = () => {
                             <div className="lyl-payment-readonly">
                               <span
                                 className={`badge ${currentPaymentStatus ===
-                                    "Pending"
-                                    ? "bg-warning text-dark"
-                                    : "bg-danger"
+                                  "Pending"
+                                  ? "bg-warning text-dark"
+                                  : "bg-danger"
                                   }`}
                               >
                                 {currentPaymentStatus}
@@ -5000,8 +5046,8 @@ const RoleAccessLayer = () => {
                             className={`lyl-class-type-badge ${isGroupBooking(
                               item
                             )
-                                ? "group"
-                                : "one-to-one"
+                              ? "group"
+                              : "one-to-one"
                               }`}
                           >
                             {isGroupBooking(
@@ -5033,8 +5079,8 @@ const RoleAccessLayer = () => {
                           <button
                             type="button"
                             className={`btn btn-sm ${deleteDisabled
-                                ? "btn-outline-secondary"
-                                : "btn-outline-danger"
+                              ? "btn-outline-secondary"
+                              : "btn-outline-danger"
                               }`}
                             disabled={
                               deleteDisabled ||

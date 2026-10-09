@@ -410,6 +410,24 @@ const InpersonBookingLayer = () => {
     )}`;
   };
 
+   const getSubjectName = (
+    item
+  ) => {
+    const subjectName = [
+      item?.subjectname,
+      item?.subject_name,
+      item?.group_subject_name,
+      item?.group_subjectname,
+      item?.subject,
+    ].find(
+      (value) =>
+        typeof value === "string" &&
+        value.trim()
+    );
+
+    return subjectName?.trim() || "-";
+  };
+
   const getBookingCategory = (
     item
   ) =>
@@ -2545,7 +2563,11 @@ const InpersonBookingLayer = () => {
           item?.studentname ||
             "",
 
-          getMainTeacherText(
+                    getMainTeacherText(
+            item
+          ),
+
+          getSubjectName(
             item
           ),
 
@@ -2777,8 +2799,13 @@ const InpersonBookingLayer = () => {
               item?.studentname ||
               "-",
 
-            "Booked Teacher":
+                        "Booked Teacher":
               getTeacherExportText(
+                item
+              ),
+
+            "Subject Name":
+              getSubjectName(
                 item
               ),
 
@@ -2889,8 +2916,12 @@ const InpersonBookingLayer = () => {
    */
 
   const exportToPDF = () => {
-    const document =
-      new jsPDF();
+       const document =
+      new jsPDF(
+        "l",
+        "mm",
+        "a4"
+      );
 
     document.setFontSize(
       16
@@ -2905,8 +2936,9 @@ const InpersonBookingLayer = () => {
     const columns = [
       "S.L",
       "Book Date",
-      "Student Name",
+           "Student Name",
       "Booked Teacher",
+      "Subject Name",
       "Slot Start",
       "Slot End",
       "Amount",
@@ -2946,7 +2978,11 @@ const InpersonBookingLayer = () => {
             item?.studentname ||
               "-",
 
-            getTeacherExportText(
+                       getTeacherExportText(
+              item
+            ),
+
+            getSubjectName(
               item
             ),
 
@@ -3690,8 +3726,12 @@ const InpersonBookingLayer = () => {
                   Student Name
                 </th>
 
-                <th>
+                                <th>
                   Teacher Name
+                </th>
+
+                <th>
+                  Subject Name
                 </th>
 
                 <th>
@@ -3738,7 +3778,7 @@ const InpersonBookingLayer = () => {
                 <tr>
                   <td
                     colSpan={
-                      14
+                      15
                     }
                     className="text-center"
                   >
@@ -3903,7 +3943,13 @@ const InpersonBookingLayer = () => {
                                 )}
                               </div>
                             ) : null}
-                          </div>
+                                                    </div>
+                        </td>
+
+                        <td>
+                          {getSubjectName(
+                            item
+                          )}
                         </td>
 
                         <td>

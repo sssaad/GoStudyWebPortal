@@ -266,6 +266,45 @@ const TeacherPayoutListPage = () => {
       ? "bg-success"
       : "bg-secondary";
 
+
+  const getFeedbackDisplay = (row) => {
+    if (Number(row?.feedback_ready) === 1) {
+      return {
+        label: "✓ Approved & sent",
+        color: "#22c55e",
+        title:
+          "Feedback has been approved and sent.",
+      };
+    }
+
+    const status = String(
+      row?.feedback_status || "",
+    ).toLowerCase();
+
+    if (status === "awaiting_approval") {
+      return {
+        label: "Awaiting approval",
+        color: "#60a5fa",
+        title: "Feedback is waiting for approval.",
+      };
+    }
+
+    if (status === "approved_not_sent") {
+      return {
+        label: "Approved, not sent",
+        color: "#c084fc",
+        title:
+          "Feedback is approved but has not been sent yet.",
+      };
+    }
+
+    return {
+      label: "Feedback pending",
+      color: "#fbbf24",
+      title: "Feedback has not been submitted yet.",
+    };
+  };
+
   const toAmountString2dpOrNull = (
     value,
   ) => {
@@ -381,9 +420,15 @@ const TeacherPayoutListPage = () => {
         parameters: [],
       };
 
+      const feedbackStatusBody = {
+        procedureName: "get_teacher_payout_feedback_status",
+        parameters: [],
+      };
+
       const [
         lookupResponse,
         groupMapResponse,
+        feedbackStatusResponse,
       ] = await Promise.all([
         axios.post(
           GET_URL,
@@ -405,6 +450,20 @@ const TeacherPayoutListPage = () => {
             signal: controller.signal,
           },
         ),
+
+        axios
+          .post(
+            RUN_SP_URL,
+            feedbackStatusBody,
+            {
+              headers: {
+                ...headers,
+                token,
+              },
+              signal: controller.signal,
+            },
+          )
+          .catch(() => null),
       ]);
 
       const lookupData = Array.isArray(
@@ -418,6 +477,47 @@ const TeacherPayoutListPage = () => {
       )
         ? groupMapResponse.data.data
         : [];
+
+      const feedbackStatusData = Array.isArray(
+        feedbackStatusResponse?.data?.data,
+      )
+        ? feedbackStatusResponse.data.data
+        : [];
+
+      const directFeedbackByBookingId = new Map();
+      const groupFeedbackBySessionId = new Map();
+
+      feedbackStatusData.forEach((status) => {
+        const scope = String(
+          status?.feedback_scope || "",
+        ).toLowerCase();
+
+        if (scope === "group") {
+          const groupSessionId = safeId(
+            status?.group_live_session_id,
+          );
+
+          if (groupSessionId) {
+            groupFeedbackBySessionId.set(
+              groupSessionId,
+              status,
+            );
+          }
+
+          return;
+        }
+
+        if (scope === "direct") {
+          const bookingId = safeId(status?.booking_id);
+
+          if (bookingId) {
+            directFeedbackByBookingId.set(
+              bookingId,
+              status,
+            );
+          }
+        }
+      });
 
       const splitIds = (value) =>
         String(value || "")
@@ -446,9 +546,9 @@ const TeacherPayoutListPage = () => {
       });
 
       /*
-       * Existing direct/one-to-one rows
-       * remain unchanged.
-       */
+      * Existing direct/one-to-one rows
+      * remain unchanged.
+      */
       const directRows = lookupData.filter(
         (item) =>
           !allGroupBookingIds.has(
@@ -457,9 +557,9 @@ const TeacherPayoutListPage = () => {
       );
 
       /*
-       * One frontend row per
-       * group_live_session_id.
-       */
+      * One frontend row per
+      * group_live_session_id.
+      */
       const groupRows = groupMapData
         .map((group) => {
           const canonicalBookingId =
@@ -592,9 +692,16 @@ const TeacherPayoutListPage = () => {
           );
 
           const isGroupBooking =
-            Number(
-              item?.is_group_booking || 0,
-            ) === 1;
+            Number(item?.is_group_booking || 0) === 1;
+
+          const feedbackData = isGroupBooking
+            ? groupFeedbackBySessionId.get(
+              safeId(item?.group_live_session_id),
+            )
+            : directFeedbackByBookingId.get(bookingId);
+
+          const feedbackReady =
+            Number(feedbackData?.feedback_ready ?? 0) === 1;
 
           const rowKey = isGroupBooking
             ? `group_${safeId(
@@ -621,6 +728,13 @@ const TeacherPayoutListPage = () => {
             booking_display_id:
               item?.booking_display_id ||
               bookingId,
+
+            feedback_ready: feedbackReady ? 1 : 0,
+
+            feedback_status: String(
+              feedbackData?.feedback_status ||
+              "unavailable",
+            ),
 
             teacher_name:
               item?.teacher_name ?? "—",
@@ -1553,79 +1667,147 @@ const TeacherPayoutListPage = () => {
   return (
     <div className="card h-100 p-0 radius-12">
       <style>{`
-        .sub-muted {
-          opacity: 0.75;
-          font-size: 12px;
-        }
+          .sub-muted {
+            opacity: 0.75;
+            font-size: 12px;
+          }
 
-        .sub-card {
-          border: 1px solid rgba(0, 0, 0, 0.08);
-          border-radius: 12px;
-          padding: 14px 16px;
-          background: rgba(0, 0, 0, 0.02);
-          height: 100%;
-        }
+          .sub-card {
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            border-radius: 12px;
+            padding: 14px 16px;
+            background: rgba(0, 0, 0, 0.02);
+            height: 100%;
+          }
 
-        [data-bs-theme="dark"] .sub-card,
-        [data-theme="dark"] .sub-card,
-        .dark .sub-card {
-          border-color: rgba(255, 255, 255, 0.12);
-          background: rgba(255, 255, 255, 0.04);
-        }
+          [data-bs-theme="dark"] .sub-card,
+          [data-theme="dark"] .sub-card,
+          .dark .sub-card {
+            border-color: rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.04);
+          }
 
-        .cell-strong {
-          font-weight: 600;
-        }
+          .cell-strong {
+            font-weight: 600;
+          }
 
-        .mono {
-          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-            "Liberation Mono", "Courier New", monospace;
-        }
+          .mono {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+              "Liberation Mono", "Courier New", monospace;
+          }
 
-        .amount-input {
-          min-width: 170px;
-        }
+          .amount-input {
+            min-width: 170px;
+          }
 
-        .date-input {
-          min-width: 160px;
-        }
+          .date-input {
+            min-width: 160px;
+          }
 
-        .method-select {
-          min-width: 140px;
-        }
+          .method-select {
+            min-width: 140px;
+          }
 
-        [data-bs-theme="dark"] .date-input,
-        [data-theme="dark"] .date-input,
-        .dark .date-input {
-          background-color: rgba(255, 255, 255, 0.04) !important;
-          border-color: rgba(255, 255, 255, 0.12) !important;
-          color: rgba(255, 255, 255, 0.92) !important;
-          color-scheme: dark;
-        }
+          [data-bs-theme="dark"] .date-input,
+          [data-theme="dark"] .date-input,
+          .dark .date-input {
+            background-color: rgba(255, 255, 255, 0.04) !important;
+            border-color: rgba(255, 255, 255, 0.12) !important;
+            color: rgba(255, 255, 255, 0.92) !important;
+            color-scheme: dark;
+          }
 
-        [data-bs-theme="dark"] .date-input:disabled,
-        [data-theme="dark"] .date-input:disabled,
-        .dark .date-input:disabled {
-          background-color: rgba(255, 255, 255, 0.06) !important;
-          border-color: rgba(255, 255, 255, 0.12) !important;
-          color: rgba(255, 255, 255, 0.45) !important;
-          opacity: 1 !important;
-          -webkit-text-fill-color: rgba(255, 255, 255, 0.45) !important;
-        }
+          [data-bs-theme="dark"] .date-input:disabled,
+          [data-theme="dark"] .date-input:disabled,
+          .dark .date-input:disabled {
+            background-color: rgba(255, 255, 255, 0.06) !important;
+            border-color: rgba(255, 255, 255, 0.12) !important;
+            color: rgba(255, 255, 255, 0.45) !important;
+            opacity: 1 !important;
+            -webkit-text-fill-color: rgba(255, 255, 255, 0.45) !important;
+          }
 
-        [data-bs-theme="dark"] .date-input::-webkit-calendar-picker-indicator,
-        [data-theme="dark"] .date-input::-webkit-calendar-picker-indicator,
-        .dark .date-input::-webkit-calendar-picker-indicator {
-          filter: invert(1);
-          opacity: 0.9;
-        }
+          [data-bs-theme="dark"] .date-input::-webkit-calendar-picker-indicator,
+          [data-theme="dark"] .date-input::-webkit-calendar-picker-indicator,
+          .dark .date-input::-webkit-calendar-picker-indicator {
+            filter: invert(1);
+            opacity: 0.9;
+          }
 
-        .row-error {
-          color: #dc3545;
-          font-size: 12px;
-          margin-top: 6px;
-        }
-      `}</style>
+          .row-error {
+            color: #dc3545;
+            font-size: 12px;
+            margin-top: 6px;
+          }
+            .payout-pagination-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 16px;
+    padding: 14px 24px;
+    border-radius: 0 0 12px 12px;
+    background: #26364a;
+    color: #f1f5f9;
+    font-size: 14px;
+  }
+
+  .payout-pagination-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+  }
+
+  .payout-page-button {
+    min-width: 88px;
+    min-height: 40px;
+    padding: 8px 14px;
+    border: 1px solid rgba(203, 213, 225, 0.28);
+    border-radius: 6px;
+    background: transparent;
+    color: #dbe5f0;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+  }
+
+  .payout-page-button:hover:not(:disabled) {
+    border-color: #60a5fa;
+    background: rgba(96, 165, 250, 0.12);
+    color: #ffffff;
+  }
+
+  .payout-page-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.42;
+  }
+
+  .payout-page-counter {
+    min-width: 78px;
+    color: #ffffff;
+    font-weight: 600;
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  @media (max-width: 575.98px) {
+    .payout-pagination-bar {
+      flex-direction: column;
+      align-items: stretch;
+      padding: 14px;
+    }
+
+    .payout-pagination-actions {
+      justify-content: space-between;
+      margin-left: 0;
+    }
+
+    .payout-page-button {
+      min-width: 76px;
+    }
+  }
+        `}</style>
 
       <div className="card-header border-bottom bg-base py-16 px-24 d-flex align-items-center flex-wrap gap-3 justify-content-between">
         <div className="d-flex align-items-center flex-wrap gap-3">
@@ -1876,6 +2058,10 @@ const TeacherPayoutListPage = () => {
                 </th>
 
                 <th>Booking ID</th>
+
+                <th style={{ minWidth: 150 }}>
+                  Feedback
+                </th>
                 <th>Teacher Name</th>
                 <th>Student Name</th>
                 <th>Subject Name</th>
@@ -1905,7 +2091,7 @@ const TeacherPayoutListPage = () => {
               {loading ? (
                 <tr>
                   <td
-                    colSpan={14}
+                    colSpan={15}
                     className="text-center"
                   >
                     <div className="py-4">
@@ -1917,7 +2103,7 @@ const TeacherPayoutListPage = () => {
                 0 ? (
                 <tr>
                   <td
-                    colSpan={14}
+                    colSpan={15}
                     className="text-center"
                   >
                     <div className="py-4">
@@ -1940,9 +2126,9 @@ const TeacherPayoutListPage = () => {
                 currentItems.map(
                   (row, index) => {
                     const isPaid =
-                      getPaidStatus(
-                        row,
-                      ) === "Paid";
+                      getPaidStatus(row) === "Paid";
+
+                    const feedback = getFeedbackDisplay(row);
 
                     const radioName =
                       `paid-${row._key}`;
@@ -1958,7 +2144,25 @@ const TeacherPayoutListPage = () => {
                         <td className="mono cell-strong">
                           {row.booking_display_id ||
                             row.booking_id ||
-                            "—"}
+                            "-"}
+                        </td>
+
+                        <td
+                          style={{
+                            minWidth: 150,
+                            verticalAlign: "middle",
+                          }}
+                        >
+                          <span
+                            style={{
+                              color: feedback.color,
+                              fontWeight: 600,
+                              whiteSpace: "nowrap",
+                            }}
+                            title={feedback.title}
+                          >
+                            {feedback.label}
+                          </span>
                         </td>
 
                         <td className="cell-strong">
@@ -2221,7 +2425,7 @@ const TeacherPayoutListPage = () => {
           </table>
         </div>
 
-        <div className="d-flex justify-content-between mt-3 flex-wrap gap-2">
+        <div className="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
           <span>
             Showing{" "}
             {filteredData.length === 0
@@ -2236,32 +2440,45 @@ const TeacherPayoutListPage = () => {
             entries
           </span>
 
-          <ul className="pagination mb-0">
-            {Array.from({
-              length: totalPages,
-            }).map((_, index) => (
-              <li
-                key={index}
-                className={`page-item ${currentPage ===
-                  index + 1
-                  ? "active"
-                  : ""
-                  }`}
-              >
-                <button
-                  type="button"
-                  onClick={() =>
-                    setCurrentPage(
-                      index + 1,
+          <div className="d-flex align-items-center gap-2">
+            <button
+              type="button"
+              className="btn btn-outline-secondary btn-sm px-3"
+              onClick={() =>
+                setCurrentPage(
+                  (page) =>
+                    Math.max(
+                      1,
+                      page - 1
                     )
-                  }
-                  className="page-link"
-                >
-                  {index + 1}
-                </button>
-              </li>
-            ))}
-          </ul>
+                )
+              }
+              disabled={currentPage <= 1}
+            >
+              Previous
+            </button>
+
+            <span className="fw-medium text-nowrap">
+              Page {currentPage} of {totalPages}
+            </span>
+
+            <button
+              type="button"
+              className="btn btn-outline-secondary btn-sm px-3"
+              onClick={() =>
+                setCurrentPage(
+                  (page) =>
+                    Math.min(
+                      totalPages,
+                      page + 1
+                    )
+                )
+              }
+              disabled={currentPage >= totalPages}
+            >
+              Next
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -782,7 +782,15 @@ const CreateGroupBatchBookingModal = ({
   const [studentTz, setStudentTz] = useState(DEFAULT_PORTAL_DISPLAY_TIMEZONE);
   const [paymentStatus, setPaymentStatus] = useState("Paid");
   const [sessionType, setSessionType] = useState("Online");
-  const [selectedWeeks, setSelectedWeeks] = useState("1");
+
+  // Flexible independent week selection.
+  const [selectedWeekKeys, setSelectedWeekKeys] = useState([]);
+
+  // Selected student's existing bookings in this exact programme + batch.
+  const [studentGroupBookings, setStudentGroupBookings] = useState([]);
+  const [loadingStudentBookings, setLoadingStudentBookings] = useState(false);
+  const [studentEnrollmentReady, setStudentEnrollmentReady] = useState(false);
+  const studentBookingRequestRef = useRef(0);
 
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [loadingTimezones, setLoadingTimezones] = useState(false);
@@ -799,21 +807,65 @@ const CreateGroupBatchBookingModal = ({
     return buildAvailableRecurringWeeks(activeSessions);
   }, [activeSessions]);
 
-  const maxSelectableWeeks = Math.min(4, availableWeeks.length);
-
-  const selectedWeeksNumber = useMemo(() => {
-    return getSafeSelectedWeeks(selectedWeeks, maxSelectableWeeks);
-  }, [selectedWeeks, maxSelectableWeeks]);
-
   const weeklyPrice = useMemo(() => {
     return Number(programme?.weekly_price || 0);
   }, [programme?.weekly_price]);
 
-  const selectedWeeksData = useMemo(() => {
-    if (selectedWeeksNumber <= 0) return [];
+  const getWeekSelectionKey = (week) => {
+    const weekId = Number(week?.group_batch_week_id || 0);
+    if (weekId > 0) return `id:${weekId}`;
 
-    return availableWeeks.slice(0, selectedWeeksNumber);
-  }, [availableWeeks, selectedWeeksNumber]);
+    const weekNo = Number(week?.actual_week_no || 0);
+    return weekNo > 0 ? `week:${weekNo}` : "";
+  };
+
+  const getSessionWeekSelectionKey = (session) => {
+    const weekId = getGroupBatchWeekId(session);
+    if (weekId > 0) return `id:${weekId}`;
+
+    const weekNo = getRecurrenceWeekNo(session);
+    return weekNo > 0 ? `week:${weekNo}` : "";
+  };
+
+  const existingBookingsByWeek = useMemo(() => {
+    const map = new Map();
+
+    (Array.isArray(studentGroupBookings) ? studentGroupBookings : []).forEach(
+      (row) => {
+        const weekId = Number(row?.group_batch_week_id || 0);
+        const weekNo = Number(row?.week_no || row?.actual_week_no || 0);
+        const key = weekId > 0 ? `id:${weekId}` : weekNo > 0 ? `week:${weekNo}` : "";
+
+        if (!key) return;
+
+        if (!map.has(key)) {
+          map.set(key, {
+            rows: [],
+            sessionIds: new Set(),
+          });
+        }
+
+        const entry = map.get(key);
+        entry.rows.push(row);
+
+        const sessionId = Number(row?.group_live_session_id || 0);
+        if (sessionId > 0) entry.sessionIds.add(sessionId);
+      }
+    );
+
+    return map;
+  }, [studentGroupBookings]);
+
+  const selectedWeeksData = useMemo(() => {
+    const selectedSet = new Set(selectedWeekKeys);
+
+    return availableWeeks.filter((week) => {
+      const key = getWeekSelectionKey(week);
+      return key && selectedSet.has(key);
+    });
+  }, [availableWeeks, selectedWeekKeys]);
+
+  const selectedWeeksNumber = selectedWeeksData.length;
 
   const selectedSessions = useMemo(() => {
     return dedupeExactSessions(
@@ -838,30 +890,239 @@ const CreateGroupBatchBookingModal = ({
   }, [selectedWeeksData]);
 
   const selectedWeekNumbers = useMemo(() => {
-    return selectedWeeksData
-      .map((week) => Number(week?.actual_week_no || 0))
-      .filter(Boolean);
+    return Array.from(
+      new Set(
+        selectedWeeksData
+          .map((week) => Number(week?.actual_week_no || 0))
+          .filter(Boolean)
+      )
+    );
   }, [selectedWeeksData]);
+
+  const selectedWeekLabels = useMemo(() => {
+    return selectedWeekNumbers.map((weekNo) => `Week ${weekNo}`);
+  }, [selectedWeekNumbers]);
 
   const totalSelectedClasses = selectedSessions.length;
   const totalAmount = weeklyPrice * selectedWeeksNumber;
 
-  const durationOptions = useMemo(() => {
-    if (maxSelectableWeeks <= 0) return [];
+  const getWeekOperationalStatus = (week) => {
+    const firstSession = week?.sessions?.[0] || {};
+    const explicitStatus =
+      firstSession?.week_status ??
+      firstSession?.batch_week_status ??
+      firstSession?.group_batch_week_status ??
+      "active";
 
-    return Array.from({ length: maxSelectableWeeks }, (_, index) => {
-      const weeks = index + 1;
-      const classesCount = availableWeeks
-        .slice(0, weeks)
-        .reduce((total, week) => total + (week.sessions?.length || 0), 0);
+    return String(explicitStatus || "active").toLowerCase().trim();
+  };
 
-      return {
-        weeks,
-        classesCount,
-        amount: weeklyPrice * weeks,
-      };
+  const getWeekLockInfo = (week) => {
+    const weekSessions = Array.isArray(week?.sessions) ? week.sessions : [];
+
+    const lockedSession = weekSessions.find((session) => {
+      const raw =
+        session?.week_is_locked ??
+        session?.batch_week_is_locked ??
+        session?.group_batch_week_is_locked ??
+        0;
+
+      return Number(raw || 0) === 1;
     });
-  }, [availableWeeks, maxSelectableWeeks, weeklyPrice]);
+
+    if (!lockedSession) {
+      return { locked: false, reason: "" };
+    }
+
+    return {
+      locked: true,
+      reason: String(
+        lockedSession?.week_locked_reason ||
+        lockedSession?.locked_reason ||
+        lockedSession?.batch_week_locked_reason ||
+        "This week is locked."
+      ).trim(),
+    };
+  };
+
+  const getWeekEnrollmentState = (week) => {
+    const key = getWeekSelectionKey(week);
+    const existing = key ? existingBookingsByWeek.get(key) : null;
+
+    if (!existing || existing.rows.length === 0) {
+      return {
+        type: "available",
+        label: "Available",
+        existingCount: 0,
+        totalCount: 0,
+      };
+    }
+
+    const allWeekSessionIds = activeSessions
+      .filter((session) => getSessionWeekSelectionKey(session) === key)
+      .map(getSessionId)
+      .filter(Boolean);
+
+    const totalCount = new Set(allWeekSessionIds).size;
+    const existingCount = allWeekSessionIds.filter((id) =>
+      existing.sessionIds.has(id)
+    ).length;
+
+    if (totalCount > 0 && existingCount >= totalCount) {
+      return {
+        type: "enrolled",
+        label: "Already Enrolled",
+        existingCount,
+        totalCount,
+      };
+    }
+
+    return {
+      type: "partial",
+      label: "Partially Enrolled",
+      existingCount: Math.max(existingCount, existing.sessionIds.size),
+      totalCount,
+    };
+  };
+
+  const getWeekCardState = (week) => {
+    const key = getWeekSelectionKey(week);
+    const selected = key ? selectedWeekKeys.includes(key) : false;
+    const enrollment = getWeekEnrollmentState(week);
+    const lockInfo = getWeekLockInfo(week);
+    const operationalStatus = getWeekOperationalStatus(week);
+
+    if (!studentId) {
+      return {
+        selected,
+        disabled: true,
+        status: "Select Student",
+        reason: "Select a student first to check existing enrolments.",
+        tone: "neutral",
+      };
+    }
+
+    if (loadingStudentBookings) {
+      return {
+        selected,
+        disabled: true,
+        status: "Checking...",
+        reason: "Checking this student's existing group bookings.",
+        tone: "neutral",
+      };
+    }
+
+    if (!studentEnrollmentReady) {
+      return {
+        selected,
+        disabled: true,
+        status: "Unavailable",
+        reason: "Student enrolment status could not be verified.",
+        tone: "danger",
+      };
+    }
+
+    if (operationalStatus !== "active" && operationalStatus !== "1") {
+      return {
+        selected,
+        disabled: true,
+        status: "Unavailable",
+        reason: `Week status is ${operationalStatus || "inactive"}.`,
+        tone: "danger",
+      };
+    }
+
+    if (lockInfo.locked) {
+      return {
+        selected,
+        disabled: true,
+        status: "Locked",
+        reason: lockInfo.reason || "This week is locked.",
+        tone: "danger",
+      };
+    }
+
+    if (enrollment.type === "enrolled") {
+      return {
+        selected: false,
+        disabled: true,
+        status: "Already Enrolled",
+        reason: "This student is already enrolled in this week.",
+        tone: "enrolled",
+      };
+    }
+
+    if (enrollment.type === "partial") {
+      return {
+        selected: false,
+        disabled: true,
+        status: "Partially Enrolled",
+        reason:
+          "This student already has one or more classes in this week. The week is disabled to avoid duplicate charging.",
+        tone: "partial",
+      };
+    }
+
+    if (!selected && selectedWeekKeys.length >= 4) {
+      return {
+        selected,
+        disabled: true,
+        status: "Max 4 Selected",
+        reason: "Maximum 4 weeks can be booked in one portal booking.",
+        tone: "neutral",
+      };
+    }
+
+    return {
+      selected,
+      disabled: false,
+      status: selected ? "Selected" : "Available",
+      reason: "",
+      tone: selected ? "selected" : "available",
+    };
+  };
+
+  const toggleWeekSelection = (week) => {
+    const key = getWeekSelectionKey(week);
+    if (!key) return;
+
+    const state = getWeekCardState(week);
+
+    if (state.disabled && !state.selected) {
+      return;
+    }
+
+    setError("");
+
+    setSelectedWeekKeys((current) => {
+      if (current.includes(key)) {
+        return current.filter((item) => item !== key);
+      }
+
+      if (current.length >= 4) {
+        return current;
+      }
+
+      return [...current, key];
+    });
+  };
+
+  const getWeekDateRange = (week) => {
+    const weekSessions = Array.isArray(week?.sessions) ? week.sessions : [];
+    const sessionDates = weekSessions
+      .map((session) => String(session?.session_date || "").trim())
+      .filter(Boolean)
+      .sort();
+
+    const start = week?.week_start_date || sessionDates[0] || "";
+    const end =
+      week?.week_end_date || sessionDates[sessionDates.length - 1] || start;
+
+    if (!start && !end) return "Dates unavailable";
+    if (!end || String(start) === String(end)) return formatDate(start || end);
+
+    return `${formatDate(start)} - ${formatDate(end)}`;
+  };
 
   const buildHeaders = async () => {
     const tokenRes = await getToken();
@@ -1059,14 +1320,90 @@ const CreateGroupBatchBookingModal = ({
     }
   };
 
+  const loadStudentGroupBookings = async (selectedStudentId) => {
+    const requestId = ++studentBookingRequestRef.current;
+
+    setSelectedWeekKeys([]);
+    setStudentGroupBookings([]);
+    setStudentEnrollmentReady(false);
+
+    if (!selectedStudentId) {
+      setLoadingStudentBookings(false);
+      return;
+    }
+
+    const programmeId = Number(programme?.programme_id || programme?.id || 0);
+    const groupBatchId = Number(
+      programme?.group_batch_id || activeSessions?.[0]?.group_batch_id || 0
+    );
+
+    if (!programmeId || !groupBatchId) {
+      setLoadingStudentBookings(false);
+      setError("Programme or batch ID is missing. Student enrolment could not be checked.");
+      return;
+    }
+
+    setLoadingStudentBookings(true);
+
+    try {
+      const headers = await buildHeaders();
+
+      const response = await axios.post(
+        RUN_STORED_PROCEDURE_URL,
+        {
+          procedureName: "sp_get_student_group_batch_bookings",
+          parameters: [
+            Number(selectedStudentId),
+            programmeId,
+            groupBatchId,
+          ],
+        },
+        { headers }
+      );
+
+      if (requestId !== studentBookingRequestRef.current) return;
+
+      if (Number(response?.data?.statusCode) !== 200) {
+        throw new Error(
+          response?.data?.message ||
+          "Existing student group bookings could not be loaded."
+        );
+      }
+
+      const rows = extractRows(response.data);
+      setStudentGroupBookings(Array.isArray(rows) ? rows : []);
+      setStudentEnrollmentReady(true);
+    } catch (err) {
+      if (requestId !== studentBookingRequestRef.current) return;
+
+      console.error("STUDENT GROUP BOOKINGS LOAD ERROR =>", err);
+      setStudentGroupBookings([]);
+      setStudentEnrollmentReady(false);
+      setError(
+        err?.response?.data?.message ||
+        err?.message ||
+        "Existing student group bookings could not be loaded."
+      );
+    } finally {
+      if (requestId === studentBookingRequestRef.current) {
+        setLoadingStudentBookings(false);
+      }
+    }
+  };
+
   useEffect(() => {
     if (!open) return;
+
+    studentBookingRequestRef.current += 1;
 
     setStudentId("");
     setStudentTz(DEFAULT_PORTAL_DISPLAY_TIMEZONE);
     setPaymentStatus("Paid");
     setSessionType("Online");
-    setSelectedWeeks("1");
+    setSelectedWeekKeys([]);
+    setStudentGroupBookings([]);
+    setStudentEnrollmentReady(false);
+    setLoadingStudentBookings(false);
     setError("");
     setCreating(false);
 
@@ -1076,24 +1413,6 @@ const CreateGroupBatchBookingModal = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  useEffect(() => {
-    if (!open) return;
-
-    if (maxSelectableWeeks <= 0) {
-      if (String(selectedWeeks) !== "1") {
-        setSelectedWeeks("1");
-      }
-
-      return;
-    }
-
-    const safeWeeks = getSafeSelectedWeeks(selectedWeeks, maxSelectableWeeks);
-
-    if (String(safeWeeks) !== String(selectedWeeks)) {
-      setSelectedWeeks(String(safeWeeks));
-    }
-  }, [open, selectedWeeks, maxSelectableWeeks]);
-
   const selectedStudent = useMemo(() => {
     return students.find((s) => String(getStudentId(s)) === String(studentId));
   }, [students, studentId]);
@@ -1101,6 +1420,7 @@ const CreateGroupBatchBookingModal = ({
   const handleStudentChange = (value) => {
     setStudentId(value);
     setError("");
+    setSelectedWeekKeys([]);
 
     const student = students.find(
       (s) => String(getStudentId(s)) === String(value)
@@ -1117,6 +1437,8 @@ const CreateGroupBatchBookingModal = ({
     } else {
       setStudentTz(DEFAULT_PORTAL_DISPLAY_TIMEZONE);
     }
+
+    loadStudentGroupBookings(value);
   };
 
   const handleTimezoneChange = (value) => {
@@ -1139,7 +1461,7 @@ const CreateGroupBatchBookingModal = ({
       timezone: studentTz,
       user_timezone: studentTz,
       timezoneid,
-      source: "admin_portal",
+      source: "Portal",
 
       programme_id: Number(programme?.programme_id || 0),
       group_batch_id: groupBatchId,
@@ -1191,7 +1513,7 @@ const CreateGroupBatchBookingModal = ({
         });
 
         return {
-          group_live_session_id: Number(session?.id),
+          group_live_session_id: getSessionId(session),
           group_batch_id: Number(session?.group_batch_id || groupBatchId || 0),
           group_programme_id: Number(session?.programme_id),
 
@@ -1280,8 +1602,18 @@ const CreateGroupBatchBookingModal = ({
       return;
     }
 
+    if (loadingStudentBookings || !studentEnrollmentReady) {
+      setError("Please wait until the student's existing enrolments are checked.");
+      return;
+    }
+
     if (selectedWeeksNumber <= 0 || selectedSessions.length === 0) {
-      setError("Please select a valid booking duration.");
+      setError("Please select at least one booking week.");
+      return;
+    }
+
+    if (selectedWeeksNumber > 4) {
+      setError("Maximum 4 weeks can be booked in one portal booking.");
       return;
     }
 
@@ -1307,12 +1639,12 @@ const CreateGroupBatchBookingModal = ({
             <strong>Timezone:</strong> ${studentTz}<br/>
 <strong>Payment Status:</strong> ${paymentStatus}<br/>
 <strong>Session Type:</strong> ${sessionType}<br/>
-<strong>Duration:</strong> ${selectedWeeksNumber} Week${selectedWeeksNumber > 1 ? "s" : ""
-        }<br/>
+<strong>Selected Weeks:</strong> ${selectedWeekLabels.join(", ") || "-"}<br/>
+            <strong>Selected Week Count:</strong> ${selectedWeeksNumber}<br/>
             <strong>Classes:</strong> ${totalSelectedClasses}<br/>
             <strong>Total Amount:</strong> AED ${Number(totalAmount || 0).toFixed(
-          2
-        )}
+        2
+      )}
           </div>
         </div>
       `,
@@ -1558,6 +1890,177 @@ const CreateGroupBatchBookingModal = ({
           font-weight: 650;
         }
 
+        .gb-week-list {
+          display: grid;
+          gap: 12px;
+        }
+
+        .gb-week-card {
+          width: 100%;
+          border: 1px solid rgba(148, 163, 184, 0.22);
+          border-radius: 15px;
+          background: rgba(15, 23, 42, 0.38);
+          color: #ffffff;
+          padding: 14px;
+          text-align: left;
+          display: grid;
+          grid-template-columns: 38px minmax(0, 1fr) auto;
+          gap: 12px;
+          align-items: center;
+          transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+        }
+
+        .gb-week-card:not(:disabled) {
+          cursor: pointer;
+        }
+
+        .gb-week-card:not(:disabled):hover {
+          border-color: rgba(96, 165, 250, 0.72);
+          background: rgba(30, 64, 175, 0.16);
+          transform: translateY(-1px);
+        }
+
+        .gb-week-card.selected {
+          border-color: rgba(34, 197, 94, 0.75);
+          background: rgba(22, 101, 52, 0.22);
+        }
+
+        .gb-week-card:disabled {
+          cursor: not-allowed;
+          opacity: 0.74;
+        }
+
+        .gb-week-check {
+          width: 28px;
+          height: 28px;
+          border-radius: 9px;
+          border: 2px solid rgba(148, 163, 184, 0.55);
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 16px;
+          font-weight: 900;
+          color: #ffffff;
+          background: rgba(15, 23, 42, 0.55);
+        }
+
+        .gb-week-card.selected .gb-week-check {
+          border-color: #22c55e;
+          background: #16a34a;
+        }
+
+        .gb-week-main {
+          min-width: 0;
+        }
+
+        .gb-week-title-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+
+        .gb-week-title {
+          font-size: 15px;
+          font-weight: 900;
+          color: #ffffff;
+        }
+
+        .gb-week-meta {
+          margin-top: 5px;
+          color: #aebed3;
+          font-size: 12px;
+          font-weight: 700;
+          line-height: 1.5;
+        }
+
+        .gb-week-reason {
+          margin-top: 5px;
+          color: #cbd5e1;
+          font-size: 11px;
+          font-weight: 700;
+          line-height: 1.45;
+        }
+
+        .gb-week-price {
+          text-align: right;
+          white-space: nowrap;
+        }
+
+        .gb-week-price-value {
+          color: #ffffff;
+          font-size: 14px;
+          font-weight: 900;
+        }
+
+        .gb-week-price-label {
+          color: #94a3b8;
+          font-size: 10px;
+          font-weight: 800;
+          margin-top: 2px;
+        }
+
+        .gb-week-status {
+          display: inline-flex;
+          align-items: center;
+          padding: 4px 8px;
+          border-radius: 999px;
+          font-size: 10px;
+          font-weight: 900;
+          letter-spacing: 0.02em;
+          background: rgba(148, 163, 184, 0.16);
+          color: #dbe4f0;
+        }
+
+        .gb-week-status.available {
+          background: rgba(59, 130, 246, 0.15);
+          color: #bfdbfe;
+        }
+
+        .gb-week-status.selected {
+          background: rgba(34, 197, 94, 0.18);
+          color: #bbf7d0;
+        }
+
+        .gb-week-status.enrolled,
+        .gb-week-status.partial {
+          background: rgba(245, 158, 11, 0.16);
+          color: #fde68a;
+        }
+
+        .gb-week-status.danger {
+          background: rgba(239, 68, 68, 0.15);
+          color: #fecaca;
+        }
+
+        .gb-selection-summary {
+          display: grid;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 10px;
+          margin-top: 14px;
+        }
+
+        .gb-summary-item {
+          border: 1px solid rgba(148, 163, 184, 0.16);
+          border-radius: 12px;
+          background: rgba(15, 23, 42, 0.36);
+          padding: 10px 12px;
+        }
+
+        .gb-summary-label {
+          color: #94a3b8;
+          font-size: 10px;
+          font-weight: 850;
+          margin-bottom: 4px;
+        }
+
+        .gb-summary-value {
+          color: #ffffff;
+          font-size: 13px;
+          font-weight: 900;
+          word-break: break-word;
+        }
+
         .gb-student-select-wrap {
           position: relative;
           width: 100%;
@@ -1778,6 +2281,19 @@ const CreateGroupBatchBookingModal = ({
             grid-template-columns: 1fr;
           }
 
+          .gb-week-card {
+            grid-template-columns: 34px minmax(0, 1fr);
+          }
+
+          .gb-week-price {
+            grid-column: 2;
+            text-align: left;
+          }
+
+          .gb-selection-summary {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+
           .gb-booking-footer button {
             width: 100%;
           }
@@ -1789,7 +2305,7 @@ const CreateGroupBatchBookingModal = ({
           <div>
             <h4 className="gb-booking-title">Create Group Booking</h4>
             <div className="gb-booking-subtitle">
-              Select a student and timezone for this active batch.
+              Select a student, then choose any available booking weeks for this active batch.
             </div>
           </div>
 
@@ -1914,39 +2430,119 @@ const CreateGroupBatchBookingModal = ({
           </div>
 
           <div className="gb-card">
-            <div className="gb-label">Booking Duration</div>
+            <div className="d-flex align-items-start justify-content-between gap-3 mb-3">
+              <div>
+                <div className="gb-label mb-1">Booking Weeks</div>
+                <div className="gb-muted">
+                  Select any available weeks independently. Maximum 4 weeks per booking.
+                </div>
+              </div>
 
-            {durationOptions.length === 0 ? (
+              <span className="badge bg-primary">
+                {selectedWeeksNumber}/4 Selected
+              </span>
+            </div>
+
+            {availableWeeks.length === 0 ? (
               <div className="alert alert-warning py-2 mb-0">
                 No upcoming available weeks were found for this batch.
               </div>
             ) : (
-              <>
-                <select
-                  className="form-select"
-                  value={String(selectedWeeksNumber || 1)}
-                  disabled={creating}
-                  onChange={(e) => setSelectedWeeks(e.target.value)}
-                >
-                  {durationOptions.map((option) => (
-                    <option key={option.weeks} value={option.weeks}>
-                      {option.weeks} Week{option.weeks > 1 ? "s" : ""} -{" "}
-                      {option.classesCount} Class
-                      {option.classesCount > 1 ? "es" : ""} - AED{" "}
-                      {Number(option.amount || 0).toFixed(2)}
-                    </option>
-                  ))}
-                </select>
+              <div className="gb-week-list">
+                {availableWeeks.map((week) => {
+                  const cardState = getWeekCardState(week);
+                  const weekKey = getWeekSelectionKey(week);
+                  const weekNo = Number(week?.actual_week_no || 0);
+                  const classesCount = Array.isArray(week?.sessions)
+                    ? week.sessions.length
+                    : 0;
 
-                <div className="gb-session-helper mt-2">
-                  Selected: {selectedWeeksNumber} Week
-                  {selectedWeeksNumber > 1 ? "s" : ""} •{" "}
-                  {totalSelectedClasses} Class
-                  {totalSelectedClasses > 1 ? "es" : ""} • AED{" "}
-                  {Number(totalAmount || 0).toFixed(2)}
-                </div>
-              </>
+                  return (
+                    <button
+                      type="button"
+                      key={weekKey || `week-${weekNo}`}
+                      className={`gb-week-card ${cardState.selected ? "selected" : ""
+                        }`}
+                      disabled={creating || cardState.disabled}
+                      aria-pressed={cardState.selected}
+                      onClick={() => toggleWeekSelection(week)}
+                    >
+                      <span className="gb-week-check">
+                        {cardState.selected ? "✓" : ""}
+                      </span>
+
+                      <span className="gb-week-main">
+                        <span className="gb-week-title-row">
+                          <span className="gb-week-title">
+                            Week {weekNo || "-"}
+                          </span>
+
+                          <span
+                            className={`gb-week-status ${cardState.tone || "neutral"}`}
+                          >
+                            {cardState.status}
+                          </span>
+                        </span>
+
+                        <span className="gb-week-meta">
+                          {getWeekDateRange(week)} • {classesCount} Class
+                          {classesCount === 1 ? "" : "es"}
+                        </span>
+
+                        {cardState.reason ? (
+                          <span className="gb-week-reason ms-2">
+                            {cardState.reason}
+                          </span>
+                        ) : null}
+                      </span>
+
+                      <span className="gb-week-price">
+                        <span className="gb-week-price-value">
+                          AED {Number(weeklyPrice || 0).toFixed(2)}
+                        </span>
+                        <span className="gb-week-price-label d-block">
+                          Weekly Price
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             )}
+
+            {loadingStudentBookings ? (
+              <div className="gb-session-helper mt-3">
+                Checking selected student's existing group bookings...
+              </div>
+            ) : null}
+
+            <div className="gb-selection-summary">
+              <div className="gb-summary-item">
+                <div className="gb-summary-label">Selected Weeks</div>
+                <div className="gb-summary-value">
+                  {selectedWeekLabels.length > 0
+                    ? selectedWeekLabels.join(", ")
+                    : "None"}
+                </div>
+              </div>
+
+              <div className="gb-summary-item">
+                <div className="gb-summary-label">Week Count</div>
+                <div className="gb-summary-value">{selectedWeeksNumber}</div>
+              </div>
+
+              <div className="gb-summary-item">
+                <div className="gb-summary-label">Selected Classes</div>
+                <div className="gb-summary-value">{totalSelectedClasses}</div>
+              </div>
+
+              <div className="gb-summary-item">
+                <div className="gb-summary-label">Total</div>
+                <div className="gb-summary-value">
+                  AED {Number(totalAmount || 0).toFixed(2)}
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="gb-card">
@@ -1961,18 +2557,12 @@ const CreateGroupBatchBookingModal = ({
             {availableWeeks.length === 0 ? (
               <div className="gb-muted">No upcoming available classes found.</div>
             ) : selectedWeeksData.length === 0 ? (
-              <div className="gb-muted">Please select a booking duration.</div>
+              <div className="gb-muted">Please select one or more booking weeks.</div>
             ) : (
               selectedWeeksData.map((week) => (
                 <div key={week.actual_week_no} className="mb-3">
                   <div className="gb-session-helper mb-2">
-                    Week {week.display_week_no}
-                    {week.actual_week_no
-                      ? ` • Actual Week ${week.actual_week_no}`
-                      : ""}
-                    {week.group_batch_week_id
-                      ? ` • Week ID ${week.group_batch_week_id}`
-                      : ""}
+                    Week {week.actual_week_no || "-"} • {getWeekDateRange(week)}
                   </div>
 
                   {(week.sessions || []).map((session, index) => {
@@ -2037,6 +2627,8 @@ const CreateGroupBatchBookingModal = ({
               creating ||
               loadingStudents ||
               loadingTimezones ||
+              loadingStudentBookings ||
+              !studentEnrollmentReady ||
               !studentId ||
               selectedSessions.length === 0 ||
               selectedWeeksNumber <= 0 ||

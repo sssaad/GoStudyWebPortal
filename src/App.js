@@ -111,6 +111,7 @@ import WalletPage from "./pages/WalletPage";
 import WidgetsPage from "./pages/WidgetsPage";
 import WizardPage from "./pages/WizardPage";
 import GroupLiveSessionsPage from "./pages/GroupLiveSessionsPage";
+import StudentBookingTrackerPage from "./pages/StudentBookingTrackerPage";
 import RegistrationRequestsPage from "./pages/RegistrationRequestsPage";
 import GroupClassInquiriesPage from "./pages/GroupClassInquiriesPage";
 import WeeklyTimetablePage from "./pages/WeeklyTimetablePage";
@@ -229,7 +230,7 @@ function App() {
           ["/group-live-sessions", GroupLiveSessionsPage],
           ["/direct-bookings", DirectBookingPage],
           ["/inperson-bookings", InpersonBookingPage],
-
+          ["/student-booking-tracker", StudentBookingTrackerPage],
           ["/leads-centre", LeadCentrePage],
           ["/todo-list", ToDoListPage],
           ["/registration-requests", RegistrationRequestsPage],

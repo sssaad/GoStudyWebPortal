@@ -34,6 +34,7 @@ const MasterLayout = ({ children }) => {
       "/group-bookings",
       "/direct-bookings",
       "/inperson-bookings",
+      "/student-booking-tracker",
     ],
     payments: [
       "/subscription",
@@ -378,6 +379,7 @@ const MasterLayout = ({ children }) => {
               <ChildMenu to="/group-bookings" label="Group Bookings" dotClass="red-dot" />
               <ChildMenu to="/direct-bookings" label="Direct Bookings" dotClass="orange-dot" />
               <ChildMenu to="/inperson-bookings" label="In-Person Bookings" dotClass="green-dot" />
+              <ChildMenu to="/student-booking-tracker" label="Student Booking Tracker" dotClass="blue-dot"/>
             </ParentMenu>
 
             <ParentMenu

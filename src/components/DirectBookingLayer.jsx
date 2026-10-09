@@ -137,8 +137,8 @@ const AlertToast = ({
   return (
     <div
       className={`lyl-toast ${alertData.type === "success"
-          ? "success"
-          : "error"
+        ? "success"
+        : "error"
         }`}
     >
       <div className="lyl-toast-content">
@@ -311,6 +311,20 @@ const DirectBookingLayer = () => {
     item?.booking_id ??
     item?.id ??
     "";
+
+  const getSubjectName = (item) => {
+    const subjectName = [
+      item?.subjectname,
+      item?.subject_name,
+      item?.subject,
+    ].find(
+      (value) =>
+        typeof value === "string" &&
+        value.trim()
+    );
+
+    return subjectName?.trim() || "-";
+  };
 
   /*
    * Exact same Group booking rule
@@ -1552,6 +1566,7 @@ const DirectBookingLayer = () => {
         const completeSearchText = [
           item?.studentname || "",
           item?.teachername || "",
+          getSubjectName(item),
           item?.payment_type || "",
           getPaymentStatusDisplay(
             item?.payment_status
@@ -1697,6 +1712,8 @@ const DirectBookingLayer = () => {
             item?.studentname || "-",
           "Booked Teacher":
             item?.teachername || "-",
+          "Subject Name":
+            getSubjectName(item),
           "Slot Start":
             formatDubaiBookingTime(
               item,
@@ -1777,6 +1794,7 @@ const DirectBookingLayer = () => {
       "Book Date",
       "Student Name",
       "Booked Teacher",
+      "Subject Name",
       "Slot Start",
       "Slot End",
       "Amount",
@@ -1804,6 +1822,7 @@ const DirectBookingLayer = () => {
             : "-",
           item?.studentname || "-",
           item?.teachername || "-",
+          getSubjectName(item),
           formatDubaiBookingTime(
             item,
             "start"
@@ -2381,6 +2400,7 @@ const DirectBookingLayer = () => {
                 <th>Recording</th>
                 <th>Student Name</th>
                 <th>Teacher Name</th>
+                <th>Subject Name</th>
                 <th>Slot Start</th>
                 <th>Slot End</th>
                 <th>Amount</th>
@@ -2396,7 +2416,7 @@ const DirectBookingLayer = () => {
               {currentItems.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={14}
+                    colSpan={15}
                     className="text-center"
                   >
                     No records found.
@@ -2442,8 +2462,8 @@ const DirectBookingLayer = () => {
                           <button
                             type="button"
                             className={`btn btn-sm ${rescheduleDisabled
-                                ? "btn-outline-secondary"
-                                : "btn-outline-primary"
+                              ? "btn-outline-secondary"
+                              : "btn-outline-primary"
                               }`}
                             disabled={
                               rescheduleDisabled
@@ -2521,6 +2541,12 @@ const DirectBookingLayer = () => {
                         <td>
                           {item?.teachername ||
                             "-"}
+                        </td>
+
+                        <td>
+                          {getSubjectName(
+                            item
+                          )}
                         </td>
 
                         <td>
