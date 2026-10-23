@@ -252,6 +252,11 @@ const RoleAccessLayer = () => {
   ] = useState(false);
 
   const [
+    rebookSourceBooking,
+    setRebookSourceBooking,
+  ] = useState(null);
+
+  const [
     isRecordingOpen,
     setIsRecordingOpen,
   ] = useState(false);
@@ -1013,6 +1018,67 @@ const RoleAccessLayer = () => {
   ) => {
     setSelectedBooking(item);
     setIsRescheduleOpen(true);
+  };
+
+  const openRebookModal = (
+    item
+  ) => {
+    if (isGroupBooking(item)) {
+      return;
+    }
+
+    /*
+     * The list stores one-to-one booking date/time in the student's
+     * timezone. Convert it to the manual modal's Asia/Dubai timezone
+     * before pre-filling the custom-slot controls.
+     */
+    const startDateTime =
+      parseBookingDateTime(
+        item,
+        "start"
+      );
+
+    const endDateTime =
+      parseBookingDateTime(
+        item,
+        "end"
+      );
+
+    const now = moment.tz(TZ);
+    const originalDateIsFuture =
+      startDateTime?.isValid?.() &&
+      startDateTime.isAfter(now);
+
+    /*
+     * A past session cannot be recreated on its old date. Keep all other
+     * fields from that session and start the date at tomorrow, so the admin
+     * can immediately choose a valid new date/time.
+     */
+    const rebookDate = originalDateIsFuture
+      ? startDateTime.format("YYYY-MM-DD")
+      : now.clone().add(1, "day").format("YYYY-MM-DD");
+
+    setRebookSourceBooking({
+      ...item,
+
+      rebook_admin_date:
+        rebookDate,
+
+      rebook_admin_start:
+        startDateTime?.isValid?.()
+          ? startDateTime.format("HH:mm")
+          : "",
+
+      rebook_admin_end:
+        endDateTime?.isValid?.()
+          ? endDateTime.format("HH:mm")
+          : "",
+
+      rebook_original_date_is_past:
+        !originalDateIsFuture,
+    });
+
+    setIsManualBookingOpen(true);
   };
 
   const closeRescheduleModal =
@@ -4467,9 +4533,10 @@ const RoleAccessLayer = () => {
               "0 10px 22px rgba(13, 110, 253, 0.22)",
           }}
           onClick={() =>
-            setIsManualBookingOpen(
-              true
-            )
+            {
+              setRebookSourceBooking(null);
+              setIsManualBookingOpen(true);
+            }
           }
         >
           <span
@@ -4597,7 +4664,7 @@ const RoleAccessLayer = () => {
                 </th>
 
                 <th>
-                  Action
+                  Rebook / Delete
                 </th>
               </tr>
             </thead>
@@ -4673,6 +4740,11 @@ const RoleAccessLayer = () => {
 
                     const deleteDisabled =
                       isDeleteDisabled(
+                        item
+                      );
+
+                    const rebookDisabled =
+                      isGroupBooking(
                         item
                       );
 
@@ -5076,60 +5148,96 @@ const RoleAccessLayer = () => {
                         </td>
 
                         <td>
-                          <button
-                            type="button"
-                            className={`btn btn-sm ${deleteDisabled
-                              ? "btn-outline-secondary"
-                              : "btn-outline-danger"
-                              }`}
-                            disabled={
-                              deleteDisabled ||
-                              deleteLoading
-                            }
-                            onClick={() => {
-                              if (
-                                !deleteDisabled
-                              ) {
-                                openDeleteModal(
-                                  item
-                                );
+                          <div className="d-flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              className={`btn btn-sm ${rebookDisabled
+                                ? "btn-outline-secondary"
+                                : "btn-outline-success"
+                                }`}
+                              disabled={
+                                rebookDisabled
                               }
-                            }}
-                            title={
-                              isGroupBooking(
-                                item
-                              )
-                                ? "Group bookings cannot be deleted using this action"
-                                : deleteDisabled
-                                  ? "Past completed bookings cannot be deleted"
-                                  : "Permanently delete this booking"
-                            }
-                            style={{
-                              minWidth:
-                                "90px",
-
-                              borderRadius:
-                                "8px",
-
-                              fontWeight:
-                                600,
-
-                              cursor:
-                                deleteDisabled ||
-                                  deleteLoading
+                              onClick={() => {
+                                if (!rebookDisabled) {
+                                  openRebookModal(item);
+                                }
+                              }}
+                              title={
+                                rebookDisabled
+                                  ? "Group bookings cannot be rebooked from this action"
+                                  : "Create a new one-to-one booking with these details"
+                              }
+                              style={{
+                                minWidth: "90px",
+                                borderRadius: "8px",
+                                fontWeight: 600,
+                                cursor: rebookDisabled
                                   ? "not-allowed"
                                   : "pointer",
-
-                              opacity:
-                                deleteDisabled
+                                opacity: rebookDisabled
                                   ? 0.6
                                   : 1,
-                            }}
-                          >
-                            {deleteLoading
-                              ? "Deleting..."
-                              : "Delete"}
-                          </button>
+                              }}
+                            >
+                              Rebook
+                            </button>
+
+                            <button
+                              type="button"
+                              className={`btn btn-sm ${deleteDisabled
+                                ? "btn-outline-secondary"
+                                : "btn-outline-danger"
+                                }`}
+                              disabled={
+                                deleteDisabled ||
+                                deleteLoading
+                              }
+                              onClick={() => {
+                                if (
+                                  !deleteDisabled
+                                ) {
+                                  openDeleteModal(
+                                    item
+                                  );
+                                }
+                              }}
+                              title={
+                                isGroupBooking(
+                                  item
+                                )
+                                  ? "Group bookings cannot be deleted using this action"
+                                  : deleteDisabled
+                                    ? "Past completed bookings cannot be deleted"
+                                    : "Permanently delete this booking"
+                              }
+                              style={{
+                                minWidth:
+                                  "90px",
+
+                                borderRadius:
+                                  "8px",
+
+                                fontWeight:
+                                  600,
+
+                                cursor:
+                                  deleteDisabled ||
+                                    deleteLoading
+                                    ? "not-allowed"
+                                    : "pointer",
+
+                                opacity:
+                                  deleteDisabled
+                                    ? 0.6
+                                    : 1,
+                              }}
+                            >
+                              {deleteLoading
+                                ? "Deleting..."
+                                : "Delete"}
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -5300,12 +5408,21 @@ const RoleAccessLayer = () => {
         isOpen={
           isManualBookingOpen
         }
-        title="Manual Booking"
-        onClose={() =>
-          setIsManualBookingOpen(
-            false
-          )
+        title={
+          rebookSourceBooking
+            ? "Rebook Session"
+            : "Manual Booking"
         }
+        initialBooking={
+          rebookSourceBooking
+        }
+        onSuccess={
+          fetchBookings
+        }
+        onClose={() => {
+          setIsManualBookingOpen(false);
+          setRebookSourceBooking(null);
+        }}
       />
     </div>
   );

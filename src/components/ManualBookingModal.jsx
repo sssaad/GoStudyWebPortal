@@ -450,7 +450,13 @@ const SearchableSelect = ({
   );
 };
 
-const ManualBookingModal = ({ isOpen, title = "Manual Booking", onClose }) => {
+const ManualBookingModal = ({
+  isOpen,
+  title = "Manual Booking",
+  onClose,
+  onSuccess,
+  initialBooking = null,
+}) => {
   // ---------------- DARK DETECT ----------------
   const [isDark, setIsDark] = useState(false);
 
@@ -560,6 +566,7 @@ const ManualBookingModal = ({ isOpen, title = "Manual Booking", onClose }) => {
   const schedRefA = useRef(null);
   const schedRefB = useRef(null);
   const bookingSubmitLockRef = useRef(false);
+  const rebookPrefillRef = useRef(null);
 
   // ---------------- Entitlements (Block + Subscription) ----------------
   const [blockInfo, setBlockInfo] = useState({ hasActive: false });
@@ -922,22 +929,100 @@ const ManualBookingModal = ({ isOpen, title = "Manual Booking", onClose }) => {
   useEffect(() => {
     if (!isOpen) return;
 
-    setStudentId("");
-    setTeacherId("");
+    const rebookStudentId = String(
+      initialBooking?.studentid ??
+      initialBooking?.student_id ??
+      initialBooking?.userid ??
+      ""
+    ).trim();
+
+    const rebookTeacherId = String(
+      initialBooking?.teacherid ??
+      initialBooking?.teacher_id ??
+      ""
+    ).trim();
+
+    const rebookSubjectId = String(
+      initialBooking?.subjectid ??
+      initialBooking?.subject_id ??
+      ""
+    ).trim();
+
+    const rawPaymentType = String(
+      initialBooking?.payment_type ??
+      initialBooking?.paymentType ??
+      ""
+    ).toLowerCase();
+
+    const rebookPaymentType = rawPaymentType.includes("subscription")
+      ? "subscription"
+      : rawPaymentType.includes("block") || rawPaymentType.includes("credit")
+        ? "block"
+        : "direct";
+
+    const rawPaymentStatus = String(
+      initialBooking?.payment_status ??
+      initialBooking?.paymentstatus ??
+      ""
+    ).toLowerCase();
+
+    const rebookPaymentStatus = !initialBooking
+      ? "Paid"
+      : rawPaymentStatus === "free"
+        ? "Free"
+        : rawPaymentStatus === "paid"
+          ? "Paid"
+          : "Unpaid";
+
+    const rawSessionType = String(
+      initialBooking?.session_type ??
+      initialBooking?.sessionType ??
+      ""
+    ).toLowerCase();
+
+    const rebookSessionType = rawSessionType.includes("person")
+      ? "In-Person"
+      : "Online";
+
+    const rawAmount =
+      initialBooking?.booking_amount ??
+      initialBooking?.amount ??
+      initialBooking?.fees ??
+      "";
+
+    const rebookAmount = String(
+      rawAmount ?? ""
+    )
+      .replace(/,/g, "")
+      .trim();
+
+    rebookPrefillRef.current = rebookTeacherId
+      ? {
+        teacherId: rebookTeacherId,
+        subjectId: rebookSubjectId,
+      }
+      : null;
+
+    setStudentId(rebookStudentId);
+    setTeacherId(rebookTeacherId);
     setSubjects([]);
-    setSubjectId("");
+    setSubjectId(rebookSubjectId);
     setTeacherProfileData(null);
     setTeacherProfileError("");
     setSelectedSlot(null);
 
-    setPaymentType("direct");
-    setAmount("");
+    setPaymentType(rebookPaymentType);
+    setAmount(
+      rebookPaymentStatus === "Free"
+        ? "0"
+        : rebookAmount
+    );
     setAmountTouched(false);
-    setSessionType("Online");
+    setSessionType(rebookSessionType);
     setBookingType("Manual");
-    setPaymentStatus("Paid");
-    prevPaymentStatusRef.current = "Paid";
-    lastNonFreeAmountRef.current = "";
+    setPaymentStatus(rebookPaymentStatus);
+    prevPaymentStatusRef.current = rebookPaymentStatus;
+    lastNonFreeAmountRef.current = rebookAmount;
     setCustomSlotError("");
 
     setBookingSubmitting(false);
@@ -947,15 +1032,35 @@ const ManualBookingModal = ({ isOpen, title = "Manual Booking", onClose }) => {
     setScrollA(0);
     setScrollB(0);
 
-    setStudentTz("");
+    setStudentTz(
+      String(
+        initialBooking?.studentTime_zone ??
+        initialBooking?.student_timezone ??
+        initialBooking?.studentTimezone ??
+        ""
+      ).trim()
+    );
     setWeekAnchorDateStr(
       getTodayDateStr(ADMIN_TIMEZONE)
     );
     setCustomSlotDate(
-      getTodayDateStr(ADMIN_TIMEZONE)
+      String(
+        initialBooking?.rebook_admin_date ||
+        getTodayDateStr(ADMIN_TIMEZONE)
+      )
     );
-    setCustomSlotStart("");
-    setCustomSlotEnd("");
+    setCustomSlotStart(
+      toHHMM(
+        initialBooking?.rebook_admin_start ||
+        ""
+      )
+    );
+    setCustomSlotEnd(
+      toHHMM(
+        initialBooking?.rebook_admin_end ||
+        ""
+      )
+    );
 
     setBookedUtcIntervals([]);
     setBookedLoading(false);
@@ -969,7 +1074,18 @@ const ManualBookingModal = ({ isOpen, title = "Manual Booking", onClose }) => {
 
     fetchStudents();
     fetchTeachers();
-  }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    /*
+     * Rebooking must follow the current entitlement rules too. The old
+     * payment type is shown first, then this may lock to the student's
+     * active Block or Subscription when the checks finish.
+     */
+    if (rebookStudentId) {
+      const requestId = ++studentReqRef.current;
+      fetchBlockEntitlement(rebookStudentId, requestId);
+      fetchSubscriptionEntitlement(rebookStudentId, requestId);
+    }
+  }, [isOpen, initialBooking]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const minDate =
@@ -1163,7 +1279,33 @@ const ManualBookingModal = ({ isOpen, title = "Manual Booking", onClose }) => {
         label,
       }));
       setSubjects(opts);
-      setSubjectId("");
+
+      const rebookPrefill =
+        rebookPrefillRef.current;
+
+      const matchingRebookTeacher =
+        String(rebookPrefill?.teacherId || "") ===
+        String(tid);
+
+      const rebookSubjectId = String(
+        rebookPrefill?.subjectId || ""
+      );
+
+      const subjectExists = opts.some(
+        (subject) =>
+          String(subject.value) ===
+          rebookSubjectId
+      );
+
+      setSubjectId(
+        matchingRebookTeacher && subjectExists
+          ? rebookSubjectId
+          : ""
+      );
+
+      if (matchingRebookTeacher) {
+        rebookPrefillRef.current = null;
+      }
     } catch (e) {
       console.error("fetchTeacherProfile error:", e);
       setTeacherProfileError("Network/API error while loading teacher profile");
@@ -2789,6 +2931,15 @@ const ManualBookingModal = ({ isOpen, title = "Manual Booking", onClose }) => {
       setBookingSuccess(
         successMessage
       );
+
+      try {
+        await onSuccess?.();
+      } catch (refreshError) {
+        console.error(
+          "Booking list refresh failed:",
+          refreshError
+        );
+      }
 
       await Swal.fire({
         icon: "success",

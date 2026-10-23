@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import moment from "moment-timezone";
 import { Icon } from "@iconify/react";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import { getAllBookings } from "../api/getAllBookings";
 
 /*
@@ -555,7 +558,12 @@ const addBookingToSummary = (summary, status, startMoment, endMoment, now) => {
     }
 };
 
-/* One row per student. Subject and teacher combinations live in the modal. */
+/*
+ * One row per student. The breakdown is deliberately one row per subject,
+ * not one row per subject/teacher pair. A student's latest non-cancelled
+ * lesson for a subject decides which teacher is displayed as the current
+ * teacher for that subject.
+ */
 const buildTrackerRows = (rawRows) => {
     const now = moment.tz(PORTAL_TIMEZONE);
     const rowsByStudent = new Map();
@@ -570,7 +578,7 @@ const buildTrackerRows = (rawRows) => {
         const rowKey = String(student.id || student.email || student.name).trim();
         const subjectKey = String(subjectId || subjectName).trim();
         const teacherKey = String(teacherId || teacherName).trim();
-        const breakdownKey = `${subjectKey}|${teacherKey}`;
+        const breakdownKey = subjectKey;
         const startMoment = parseBookingDateTime(item, "start");
         const endMoment = getEndMoment(item, startMoment);
         const status = getBookingStatus(item, now);
@@ -607,6 +615,8 @@ const buildTrackerRows = (rawRows) => {
                 subjectName,
                 teacherId,
                 teacherName,
+                latestTeacherMoment: null,
+                latestTeacherStatus: "",
                 ...createSummaryBucket(),
             });
         }
@@ -641,7 +651,41 @@ const buildTrackerRows = (rawRows) => {
         row.sessionTypes.add(log.sessionType);
         if (log.source !== "-") row.bookingSources.add(log.source);
         addBookingToSummary(row, status, startMoment, endMoment, now);
-        addBookingToSummary(row.breakdownMap.get(breakdownKey), status, startMoment, endMoment, now);
+        const subjectSummary = row.breakdownMap.get(breakdownKey);
+        addBookingToSummary(subjectSummary, status, startMoment, endMoment, now);
+
+        /*
+         * Cancelled bookings do not replace a student's current teacher.
+         * If all available bookings are cancelled, retain the newest known
+         * teacher rather than leaving the subject blank.
+         */
+        const hasValidLessonTime = startMoment?.isValid?.();
+        const currentTeacherIsCancelled =
+            subjectSummary.latestTeacherStatus === "cancelled";
+
+        const shouldUpdateCurrentTeacher =
+            hasValidLessonTime && (
+                !subjectSummary.latestTeacherMoment ||
+                (
+                    status !== "cancelled" &&
+                    (
+                        currentTeacherIsCancelled ||
+                        startMoment.isAfter(subjectSummary.latestTeacherMoment)
+                    )
+                ) ||
+                (
+                    status === "cancelled" &&
+                    currentTeacherIsCancelled &&
+                    startMoment.isAfter(subjectSummary.latestTeacherMoment)
+                )
+            );
+
+        if (shouldUpdateCurrentTeacher) {
+            subjectSummary.teacherId = teacherId;
+            subjectSummary.teacherName = teacherName;
+            subjectSummary.latestTeacherMoment = startMoment.clone();
+            subjectSummary.latestTeacherStatus = status;
+        }
     });
 
     return Array.from(rowsByStudent.values())
@@ -665,13 +709,28 @@ const buildTrackerRows = (rawRows) => {
                 return summary;
             }, PAYMENT_STATUS_ORDER.reduce((summary, status) => ({ ...summary, [status]: 0 }), {}));
 
+            const breakdown = Array.from(row.breakdownMap.values())
+                .filter((item) => item.totalBookings > 0)
+                .map((item) => ({
+                    ...item,
+                    needsRebooking: item.upcomingLessons === 0,
+                }))
+                .sort((first, second) => first.subjectName.localeCompare(second.subjectName));
+
+            const currentTeachers = unique(
+                breakdown.map((item) => item.teacherName)
+            ).map((name) => ({ value: name, label: name }));
+
+            const needsRebookingSubjects = breakdown.filter(
+                (item) => item.needsRebooking
+            );
+
             return {
                 ...row,
                 subjects: Array.from(row.subjectsMap.values()).sort((a, b) => a.label.localeCompare(b.label)),
-                teachers: Array.from(row.teachersMap.values()).sort((a, b) => a.label.localeCompare(b.label)),
-                breakdown: Array.from(row.breakdownMap.values())
-                    .filter((item) => item.totalBookings > 0)
-                    .sort((first, second) => first.subjectName.localeCompare(second.subjectName) || first.teacherName.localeCompare(second.teacherName)),
+                teachers: currentTeachers,
+                breakdown,
+                needsRebookingSubjects,
                 bookingTypes: [...row.bookingTypes].sort(),
                 sessionTypes: [...row.sessionTypes].sort(),
                 bookingSources: [...row.bookingSources].sort(),
@@ -732,6 +791,13 @@ const StatusBadge = ({ status }) => {
     return <span className={`sbtw-status ${className}`}>{status}</span>;
 };
 
+const HorizontalScrollHint = () => (
+    <div className="sbtw-scroll-hint" aria-hidden="true">
+        <Icon icon="mdi:arrow-left-right-bold-outline" />
+        <span>Use the bottom scroll bar to view all columns</span>
+    </div>
+);
+
 const BookingLogsModal = ({ row, onClose }) => {
     if (!row) return null;
 
@@ -756,17 +822,17 @@ const BookingLogsModal = ({ row, onClose }) => {
                 className="sbtw-modal"
                 role="dialog"
                 aria-modal="true"
-                aria-label="Student booking logs"
+                aria-label="Student booking details"
                 onMouseDown={(event) => event.stopPropagation()}
             >
                 <div className="sbtw-modal-header">
                     <div>
-                        <h5 className="mb-1">Student Booking Logs</h5>
+                        <h5 className="mb-1">Student Booking Details</h5>
                         <p className="sbtw-muted mb-0">
-                            {row.student.name} · {row.subjects.length} subjects · {row.teachers.length} teachers
+                            {row.student.name} · {row.subjects.length} subjects · {row.teachers.length} current teachers
                         </p>
                     </div>
-                    <button type="button" className="sbtw-close-button" onClick={onClose} aria-label="Close logs">
+                    <button type="button" className="sbtw-close-button" onClick={onClose} aria-label="Close details">
                         <Icon icon="mdi:close" />
                     </button>
                 </div>
@@ -803,7 +869,8 @@ const BookingLogsModal = ({ row, onClose }) => {
 
                     <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
                         <div>
-                            <h6 className="mb-1">Subject and teacher details</h6>
+                            <h6 className="mb-1">Subject coverage and current teacher</h6>
+                            <p className="sbtw-muted small mb-0">Only the latest teacher for each subject is displayed here.</p>
                         </div>
                         <div className="d-flex flex-wrap gap-1">
                             {PAYMENT_STATUS_ORDER.map((paymentStatus) => {
@@ -822,15 +889,25 @@ const BookingLogsModal = ({ row, onClose }) => {
                         </div>
                     </div>
 
+                    {row.needsRebookingSubjects.length ? (
+                        <div className="sbtw-rebook-panel mb-3">
+                            <Icon icon="mdi:alert-circle-outline" />
+                            <span>
+                                Needs rebooking: {row.needsRebookingSubjects.map((item) => item.subjectName).join(", ")}
+                            </span>
+                        </div>
+                    ) : null}
+
+                    <HorizontalScrollHint />
                     <div className="table-responsive sbtw-modal-table-wrap mb-4">
                         <table className="table bordered-table mb-0 sbtw-table">
                             <thead>
                                 <tr>
                                     <th>Subject</th>
-                                    <th>Teacher</th>
+                                    <th>Current Teacher</th>
                                     <th className="text-center">Total</th>
-                                    <th className="text-center">Completed</th>
                                     <th className="text-center">Upcoming</th>
+                                    <th>Coverage</th>
                                     <th>Last Lesson</th>
                                     <th>Next Lesson</th>
                                 </tr>
@@ -841,8 +918,14 @@ const BookingLogsModal = ({ row, onClose }) => {
                                         <td>{item.subjectName}</td>
                                         <td>{item.teacherName}</td>
                                         <td className="text-center">{item.totalBookings}</td>
-                                        <td className="text-center">{item.completedLessons}</td>
                                         <td className="text-center">{item.upcomingLessons}</td>
+                                        <td>
+                                            {item.needsRebooking ? (
+                                                <span className="sbtw-status sbtw-status-danger">Needs Rebooking</span>
+                                            ) : (
+                                                <span className="sbtw-status sbtw-status-success">Covered</span>
+                                            )}
+                                        </td>
                                         <td>{formatMoment(item.lastMoment)}</td>
                                         <td>{formatMoment(item.nextMoment)}</td>
                                     </tr>
@@ -947,6 +1030,9 @@ const StudentBookingTrackerLayer = () => {
     const [statusFilter, setStatusFilter] = useState("");
     const [bookingTypeFilter, setBookingTypeFilter] = useState("");
     const [paymentFilter, setPaymentFilter] = useState("");
+    const [upcomingCountFilter, setUpcomingCountFilter] = useState("");
+    const [zeroUpcomingFilter, setZeroUpcomingFilter] = useState("all");
+    const [upcomingSortOrder, setUpcomingSortOrder] = useState("ascending");
     const [currentPage, setCurrentPage] = useState(1);
     const [selectedRow, setSelectedRow] = useState(null);
 
@@ -987,11 +1073,15 @@ const StudentBookingTrackerLayer = () => {
         () => PAYMENT_STATUS_ORDER.filter((status) => rows.some((row) => (row.paymentCounts[status] || 0) > 0)),
         [rows]
     );
+    const upcomingCountOptions = useMemo(
+        () => [...new Set(rows.map((row) => Number(row.upcomingLessons) || 0))].sort((first, second) => first - second),
+        [rows]
+    );
 
     const filteredRows = useMemo(() => {
         const search = norm(searchTerm);
 
-        return rows.filter((row) => {
+        const matchingRows = rows.filter((row) => {
             const searchableText = norm([
                 row.student.name,
                 row.student.username,
@@ -1004,16 +1094,42 @@ const StudentBookingTrackerLayer = () => {
                 row.sessionTypes.join(" "),
                 row.bookingSources.join(" "),
                 row.status,
+                row.needsRebookingSubjects.map((item) => `${item.subjectName} needs rebooking`).join(" "),
                 PAYMENT_STATUS_ORDER.filter((status) => (row.paymentCounts[status] || 0) > 0).join(" "),
             ].join(" "));
             return (
                 (!search || searchableText.includes(search)) &&
                 (!statusFilter || row.status === statusFilter) &&
                 (!bookingTypeFilter || row.bookingTypes.includes(bookingTypeFilter)) &&
-                (!paymentFilter || (row.paymentCounts[paymentFilter] || 0) > 0)
+                (!paymentFilter || (row.paymentCounts[paymentFilter] || 0) > 0) &&
+                (upcomingCountFilter === "" || Number(row.upcomingLessons) === Number(upcomingCountFilter)) &&
+                (zeroUpcomingFilter !== "zero_only" || Number(row.upcomingLessons) === 0) &&
+                (zeroUpcomingFilter !== "exclude_zero" || Number(row.upcomingLessons) > 0)
             );
         });
-    }, [rows, searchTerm, statusFilter, bookingTypeFilter, paymentFilter]);
+
+        return matchingRows.sort((first, second) => {
+            const difference = Number(first.upcomingLessons) - Number(second.upcomingLessons);
+            if (difference !== 0) {
+                return upcomingSortOrder === "descending" ? -difference : difference;
+            }
+
+            const needsRebookingDifference =
+                second.needsRebookingSubjects.length - first.needsRebookingSubjects.length;
+
+            if (needsRebookingDifference !== 0) return needsRebookingDifference;
+            return first.student.name.localeCompare(second.student.name);
+        });
+    }, [
+        rows,
+        searchTerm,
+        statusFilter,
+        bookingTypeFilter,
+        paymentFilter,
+        upcomingCountFilter,
+        zeroUpcomingFilter,
+        upcomingSortOrder,
+    ]);
 
     const totalPages = Math.max(1, Math.ceil(filteredRows.length / ITEMS_PER_PAGE));
     const paginatedRows = useMemo(() => {
@@ -1023,7 +1139,15 @@ const StudentBookingTrackerLayer = () => {
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm, statusFilter, bookingTypeFilter, paymentFilter]);
+    }, [
+        searchTerm,
+        statusFilter,
+        bookingTypeFilter,
+        paymentFilter,
+        upcomingCountFilter,
+        zeroUpcomingFilter,
+        upcomingSortOrder,
+    ]);
 
     useEffect(() => {
         if (currentPage > totalPages) setCurrentPage(totalPages);
@@ -1033,6 +1157,10 @@ const StudentBookingTrackerLayer = () => {
         students: new Set(rows.map((row) => row.student.id || row.student.name)).size,
         activeRows: rows.filter((row) => row.upcomingLessons > 0 || row.ongoingLessons > 0).length,
         needsAttention: rows.filter((row) => !row.upcomingLessons && !row.ongoingLessons && row.totalBookings > 0).length,
+        subjectsNeedingRebooking: rows.reduce(
+            (total, row) => total + row.needsRebookingSubjects.length,
+            0
+        ),
         upcomingSoon: rows.filter((row) => {
             if (!row.nextMoment) return false;
             const days = row.nextMoment.clone().startOf("day").diff(moment.tz(PORTAL_TIMEZONE).startOf("day"), "days");
@@ -1040,11 +1168,115 @@ const StudentBookingTrackerLayer = () => {
         }).length,
     }), [rows]);
 
+    const getExportRows = () => filteredRows.map((row) => ({
+        "Student Name": row.student.name,
+        Username: row.student.username || "-",
+        "Student Email": row.student.email || "-",
+        "Parent Email": row.student.parentEmails.join(", ") || "-",
+        "Parent Phone": row.student.parentPhone || "-",
+        Subjects: row.breakdown.map((item) => item.subjectName).join(", ") || "-",
+        "Current Teacher(s)": row.teachers.map((item) => item.label).join(", ") || "-",
+        "Subject Coverage": row.breakdown
+            .map((item) => `${item.subjectName}: ${item.upcomingLessons} upcoming (${item.needsRebooking ? "Needs Rebooking" : "Covered"})`)
+            .join(" | ") || "-",
+        "Subjects Need Rebooking": row.needsRebookingSubjects.length,
+        "Rebooking Subjects": row.needsRebookingSubjects.map((item) => item.subjectName).join(", ") || "-",
+        "Total Lessons": row.totalBookings,
+        Completed: row.completedLessons,
+        Upcoming: row.upcomingLessons,
+        "Last Lesson": formatMoment(row.lastMoment),
+        "Days Since Last Lesson": row.daysSince === null ? "-" : row.daysSince,
+        "Next Lesson": formatMoment(row.nextMoment),
+        Status: row.status,
+    }));
+
+    const exportToExcel = () => {
+        const exportRows = getExportRows();
+        if (!exportRows.length) return;
+
+        const worksheet = XLSX.utils.json_to_sheet(exportRows);
+        worksheet["!cols"] = [
+            { wch: 24 }, { wch: 18 }, { wch: 28 }, { wch: 34 }, { wch: 18 },
+            { wch: 30 }, { wch: 30 }, { wch: 65 }, { wch: 18 }, { wch: 30 },
+            { wch: 15 }, { wch: 13 }, { wch: 13 }, { wch: 24 }, { wch: 22 },
+            { wch: 24 }, { wch: 22 },
+        ];
+
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Booking Tracker");
+        XLSX.writeFile(
+            workbook,
+            `student-booking-tracker-${moment.tz(PORTAL_TIMEZONE).format("YYYY-MM-DD")}.xlsx`
+        );
+    };
+
+    const exportToPDF = () => {
+        const exportRows = getExportRows();
+        if (!exportRows.length) return;
+
+        const document = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+        const generatedAt = moment.tz(PORTAL_TIMEZONE).format("DD MMM YYYY, hh:mm A");
+
+        document.setFontSize(14);
+        document.text("Student Booking Tracker", 40, 34);
+        document.setFontSize(8);
+        document.setTextColor(100);
+        document.text(`Generated: ${generatedAt} (Asia/Dubai)`, 40, 48);
+
+        autoTable(document, {
+            startY: 62,
+            head: [[
+                "Student", "Email / Username", "Parent Contact", "Subjects & Current Teacher",
+                "Subject Coverage", "Total", "Completed", "Upcoming", "Needs Rebooking",
+                "Last Lesson", "Next Lesson", "Status",
+            ]],
+            body: exportRows.map((row) => [
+                row["Student Name"],
+                `${row["Student Email"] !== "-" ? row["Student Email"] : row.Username}`,
+                `${row["Parent Email"]}\n${row["Parent Phone"]}`,
+                `${row.Subjects}\n${row["Current Teacher(s)"]}`,
+                row["Subject Coverage"],
+                row["Total Lessons"],
+                row.Completed,
+                row.Upcoming,
+                row["Rebooking Subjects"],
+                row["Last Lesson"],
+                row["Next Lesson"],
+                row.Status,
+            ]),
+            theme: "grid",
+            styles: { fontSize: 5.8, cellPadding: 3, overflow: "linebreak" },
+            headStyles: { fillColor: [47, 128, 237], fontSize: 6, textColor: 255 },
+            columnStyles: {
+                0: { cellWidth: 58 },
+                1: { cellWidth: 80 },
+                2: { cellWidth: 80 },
+                3: { cellWidth: 95 },
+                4: { cellWidth: 125 },
+                5: { cellWidth: 30 },
+                6: { cellWidth: 38 },
+                7: { cellWidth: 36 },
+                8: { cellWidth: 72 },
+                9: { cellWidth: 68 },
+                10: { cellWidth: 68 },
+                11: { cellWidth: 58 },
+            },
+            margin: { left: 22, right: 22 },
+        });
+
+        document.save(
+            `student-booking-tracker-${moment.tz(PORTAL_TIMEZONE).format("YYYY-MM-DD")}.pdf`
+        );
+    };
+
     const resetFilters = () => {
         setSearchTerm("");
         setStatusFilter("");
         setBookingTypeFilter("");
         setPaymentFilter("");
+        setUpcomingCountFilter("");
+        setZeroUpcomingFilter("all");
+        setUpcomingSortOrder("ascending");
     };
 
     return (
@@ -1067,17 +1299,27 @@ const StudentBookingTrackerLayer = () => {
         .sbtw-input, .sbtw-select, .sbtw-input-group-text { background: #ffffff !important; color: #344054 !important; border-color: #d0d5dd !important; }
         .sbtw-input::placeholder { color: #98a2b3; }
         .sbtw-input:focus, .sbtw-select:focus { border-color: #2f80ed !important; box-shadow: 0 0 0 .2rem rgba(47, 128, 237, .12) !important; }
-        /* Both summary tables remain horizontally scrollable on small screens. */
-        .sbtw-table-wrap, .sbtw-modal-table-wrap { border: 1px solid #eaecf0; border-radius: 12px; overflow-x: auto !important; overflow-y: hidden; -webkit-overflow-scrolling: touch; scrollbar-width: auto; }
-        .sbtw-table-wrap::-webkit-scrollbar, .sbtw-modal-table-wrap::-webkit-scrollbar { height: 10px; }
-        .sbtw-table-wrap::-webkit-scrollbar-thumb, .sbtw-modal-table-wrap::-webkit-scrollbar-thumb { background: #98a2b3; border-radius: 999px; }
-        .sbtw-table { min-width: 1280px; color: #344054 !important; }
-        .sbtw-modal-table-wrap .sbtw-table { min-width: 820px; }
+        /* Keep an always-available horizontal bar below both tables. */
+        .sbtw-scroll-hint { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin: 0 2px 7px; color: #667085; font-size: 11px; font-weight: 600; }
+        .sbtw-scroll-hint svg { font-size: 15px; }
+        .sbtw-table-wrap, .sbtw-modal-table-wrap { width: 100%; border: 1px solid #eaecf0; border-radius: 12px; overflow-x: scroll !important; overflow-y: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; scrollbar-gutter: stable both-edges; scrollbar-width: auto; scrollbar-color: #667085 #eaecf0; }
+        .sbtw-table-wrap::-webkit-scrollbar, .sbtw-modal-table-wrap::-webkit-scrollbar { height: 12px; }
+        .sbtw-table-wrap::-webkit-scrollbar-track, .sbtw-modal-table-wrap::-webkit-scrollbar-track { background: #eaecf0; border-radius: 999px; }
+        .sbtw-table-wrap::-webkit-scrollbar-thumb, .sbtw-modal-table-wrap::-webkit-scrollbar-thumb { background: #667085; border: 3px solid #eaecf0; border-radius: 999px; }
+        .sbtw-table { min-width: 1640px; color: #344054 !important; }
+        .sbtw-modal-table-wrap .sbtw-table { min-width: 940px; }
         .sbtw-table thead th { padding: 13px 14px; color: #344054 !important; background: #f9fafb !important; border-color: #eaecf0 !important; font-size: 12px; font-weight: 700; white-space: nowrap; }
         .sbtw-table tbody td { padding: 14px; color: #344054 !important; background: #ffffff !important; border-color: #eaecf0 !important; font-size: 13px; vertical-align: middle; }
         .sbtw-table tbody tr:hover td { background: #f8fbff !important; }
         .sbtw-student-name { color: #101828; font-weight: 700; }
         .sbtw-subtext { margin-top: 3px; color: #667085; font-size: 11px; }
+        .sbtw-coverage-cell { min-width: 238px; }
+        .sbtw-coverage-summary { display: flex; align-items: center; gap: 7px; color: #101828; font-size: 12px; font-weight: 700; line-height: 1.2; white-space: nowrap; }
+        .sbtw-coverage-divider { width: 3px; height: 3px; flex: 0 0 3px; background: #98a2b3; border-radius: 999px; }
+        .sbtw-rebook-badge, .sbtw-covered-badge { display: inline-flex; align-items: center; gap: 4px; margin-top: 7px; padding: 4px 7px; border: 1px solid transparent; border-radius: 6px; font-size: 10px; font-weight: 700; line-height: 1; white-space: nowrap; }
+        .sbtw-rebook-badge { color: #b42318; background: #fef3f2; border-color: #fecdca; }
+        .sbtw-covered-badge { color: #067647; background: #ecfdf3; border-color: #abefc6; }
+        .sbtw-rebook-panel { display: flex; align-items: center; gap: 8px; padding: 10px 12px; color: #b42318; background: #fef3f2; border: 1px solid #fecdca; border-radius: 8px; font-size: 12px; font-weight: 700; }
         .sbtw-count { color: #101828; font-size: 15px; font-weight: 700; }
         .sbtw-days { display: inline-flex; align-items: center; justify-content: center; min-width: 42px; padding: 5px 8px; color: #175cd3; background: #eff8ff; border-radius: 7px; font-weight: 700; }
         .sbtw-days-old { color: #b42318; background: #fef3f2; }
@@ -1119,6 +1361,7 @@ const StudentBookingTrackerLayer = () => {
         [data-theme="dark"] .sbtw-page-card, [data-bs-theme="dark"] .sbtw-page-card, body.dark-theme .sbtw-page-card, body.dark-mode .sbtw-page-card, body.dark .sbtw-page-card, html.dark .sbtw-page-card, .theme-dark .sbtw-page-card { background: #273145 !important; color: #e5e7eb !important; }
         [data-theme="dark"] .sbtw-title, [data-bs-theme="dark"] .sbtw-title, body.dark-theme .sbtw-title, body.dark-mode .sbtw-title, body.dark .sbtw-title, html.dark .sbtw-title, .theme-dark .sbtw-title { color: #f8fafc !important; }
         [data-theme="dark"] .sbtw-muted, [data-bs-theme="dark"] .sbtw-muted, body.dark-theme .sbtw-muted, body.dark-mode .sbtw-muted, body.dark .sbtw-muted, html.dark .sbtw-muted, .theme-dark .sbtw-muted, [data-theme="dark"] .sbtw-subtext, [data-bs-theme="dark"] .sbtw-subtext, body.dark-theme .sbtw-subtext, body.dark-mode .sbtw-subtext, body.dark .sbtw-subtext, html.dark .sbtw-subtext, .theme-dark .sbtw-subtext { color: #aeb9cc !important; }
+        [data-theme="dark"] .sbtw-rebook-panel, [data-bs-theme="dark"] .sbtw-rebook-panel, body.dark-theme .sbtw-rebook-panel, body.dark-mode .sbtw-rebook-panel, body.dark .sbtw-rebook-panel, html.dark .sbtw-rebook-panel, .theme-dark .sbtw-rebook-panel { color: #fecaca !important; background: #4a2428 !important; border-color: #7f3037 !important; }
         [data-theme="dark"] .sbtw-stat-card, [data-bs-theme="dark"] .sbtw-stat-card, body.dark-theme .sbtw-stat-card, body.dark-mode .sbtw-stat-card, body.dark .sbtw-stat-card, html.dark .sbtw-stat-card, .theme-dark .sbtw-stat-card { background: #273145 !important; border-color: #3a4760 !important; }
         [data-theme="dark"] .sbtw-stat-label, [data-bs-theme="dark"] .sbtw-stat-label, body.dark-theme .sbtw-stat-label, body.dark-mode .sbtw-stat-label, body.dark .sbtw-stat-label, html.dark .sbtw-stat-label, .theme-dark .sbtw-stat-label { color: #aeb9cc !important; }
         [data-theme="dark"] .sbtw-stat-value, [data-bs-theme="dark"] .sbtw-stat-value, body.dark-theme .sbtw-stat-value, body.dark-mode .sbtw-stat-value, body.dark .sbtw-stat-value, html.dark .sbtw-stat-value, .theme-dark .sbtw-stat-value { color: #f8fafc !important; }
@@ -1126,11 +1369,17 @@ const StudentBookingTrackerLayer = () => {
         [data-theme="dark"] .sbtw-filter-card label, [data-bs-theme="dark"] .sbtw-filter-card label, body.dark-theme .sbtw-filter-card label, body.dark-mode .sbtw-filter-card label, body.dark .sbtw-filter-card label, html.dark .sbtw-filter-card label, .theme-dark .sbtw-filter-card label { color: #d7deea !important; }
         [data-theme="dark"] .sbtw-input, [data-theme="dark"] .sbtw-select, [data-theme="dark"] .sbtw-input-group-text, [data-bs-theme="dark"] .sbtw-input, [data-bs-theme="dark"] .sbtw-select, [data-bs-theme="dark"] .sbtw-input-group-text, body.dark-theme .sbtw-input, body.dark-theme .sbtw-select, body.dark-theme .sbtw-input-group-text, body.dark-mode .sbtw-input, body.dark-mode .sbtw-select, body.dark-mode .sbtw-input-group-text, body.dark .sbtw-input, body.dark .sbtw-select, body.dark .sbtw-input-group-text, html.dark .sbtw-input, html.dark .sbtw-select, html.dark .sbtw-input-group-text, .theme-dark .sbtw-input, .theme-dark .sbtw-select, .theme-dark .sbtw-input-group-text { color: #edf2f7 !important; background: #202a3b !important; border-color: #46536b !important; }
         [data-theme="dark"] .sbtw-input::placeholder, [data-bs-theme="dark"] .sbtw-input::placeholder, body.dark-theme .sbtw-input::placeholder, body.dark-mode .sbtw-input::placeholder, body.dark .sbtw-input::placeholder, html.dark .sbtw-input::placeholder, .theme-dark .sbtw-input::placeholder { color: #8c9ab0 !important; }
-        [data-theme="dark"] .sbtw-table-wrap, [data-theme="dark"] .sbtw-modal-table-wrap, [data-bs-theme="dark"] .sbtw-table-wrap, [data-bs-theme="dark"] .sbtw-modal-table-wrap, body.dark-theme .sbtw-table-wrap, body.dark-theme .sbtw-modal-table-wrap, body.dark-mode .sbtw-table-wrap, body.dark-mode .sbtw-modal-table-wrap, body.dark .sbtw-table-wrap, body.dark .sbtw-modal-table-wrap, html.dark .sbtw-table-wrap, html.dark .sbtw-modal-table-wrap, .theme-dark .sbtw-table-wrap, .theme-dark .sbtw-modal-table-wrap { border-color: #3a4760 !important; }
+        [data-theme="dark"] .sbtw-scroll-hint, [data-bs-theme="dark"] .sbtw-scroll-hint, body.dark-theme .sbtw-scroll-hint, body.dark-mode .sbtw-scroll-hint, body.dark .sbtw-scroll-hint, html.dark .sbtw-scroll-hint, .theme-dark .sbtw-scroll-hint { color: #aeb9cc !important; }
+        [data-theme="dark"] .sbtw-table-wrap, [data-theme="dark"] .sbtw-modal-table-wrap, [data-bs-theme="dark"] .sbtw-table-wrap, [data-bs-theme="dark"] .sbtw-modal-table-wrap, body.dark-theme .sbtw-table-wrap, body.dark-theme .sbtw-modal-table-wrap, body.dark-mode .sbtw-table-wrap, body.dark-mode .sbtw-modal-table-wrap, body.dark .sbtw-table-wrap, body.dark .sbtw-modal-table-wrap, html.dark .sbtw-table-wrap, html.dark .sbtw-modal-table-wrap, .theme-dark .sbtw-table-wrap, .theme-dark .sbtw-modal-table-wrap { border-color: #3a4760 !important; scrollbar-color: #72809a #1f2937; }
+        [data-theme="dark"] .sbtw-table-wrap::-webkit-scrollbar-track, [data-theme="dark"] .sbtw-modal-table-wrap::-webkit-scrollbar-track, [data-bs-theme="dark"] .sbtw-table-wrap::-webkit-scrollbar-track, [data-bs-theme="dark"] .sbtw-modal-table-wrap::-webkit-scrollbar-track, body.dark-theme .sbtw-table-wrap::-webkit-scrollbar-track, body.dark-theme .sbtw-modal-table-wrap::-webkit-scrollbar-track, body.dark-mode .sbtw-table-wrap::-webkit-scrollbar-track, body.dark-mode .sbtw-modal-table-wrap::-webkit-scrollbar-track, body.dark .sbtw-table-wrap::-webkit-scrollbar-track, body.dark .sbtw-modal-table-wrap::-webkit-scrollbar-track, html.dark .sbtw-table-wrap::-webkit-scrollbar-track, html.dark .sbtw-modal-table-wrap::-webkit-scrollbar-track, .theme-dark .sbtw-table-wrap::-webkit-scrollbar-track, .theme-dark .sbtw-modal-table-wrap::-webkit-scrollbar-track { background: #1f2937; }
+        [data-theme="dark"] .sbtw-table-wrap::-webkit-scrollbar-thumb, [data-theme="dark"] .sbtw-modal-table-wrap::-webkit-scrollbar-thumb, [data-bs-theme="dark"] .sbtw-table-wrap::-webkit-scrollbar-thumb, [data-bs-theme="dark"] .sbtw-modal-table-wrap::-webkit-scrollbar-thumb, body.dark-theme .sbtw-table-wrap::-webkit-scrollbar-thumb, body.dark-theme .sbtw-modal-table-wrap::-webkit-scrollbar-thumb, body.dark-mode .sbtw-table-wrap::-webkit-scrollbar-thumb, body.dark-mode .sbtw-modal-table-wrap::-webkit-scrollbar-thumb, body.dark .sbtw-table-wrap::-webkit-scrollbar-thumb, body.dark .sbtw-modal-table-wrap::-webkit-scrollbar-thumb, html.dark .sbtw-table-wrap::-webkit-scrollbar-thumb, html.dark .sbtw-modal-table-wrap::-webkit-scrollbar-thumb, .theme-dark .sbtw-table-wrap::-webkit-scrollbar-thumb, .theme-dark .sbtw-modal-table-wrap::-webkit-scrollbar-thumb { background: #72809a; border-color: #1f2937; }
         [data-theme="dark"] .sbtw-table thead th, [data-bs-theme="dark"] .sbtw-table thead th, body.dark-theme .sbtw-table thead th, body.dark-mode .sbtw-table thead th, body.dark .sbtw-table thead th, html.dark .sbtw-table thead th, .theme-dark .sbtw-table thead th { color: #f2f4f7 !important; background: #1f2937 !important; border-color: #3a4760 !important; }
         [data-theme="dark"] .sbtw-table tbody td, [data-bs-theme="dark"] .sbtw-table tbody td, body.dark-theme .sbtw-table tbody td, body.dark-mode .sbtw-table tbody td, body.dark .sbtw-table tbody td, html.dark .sbtw-table tbody td, .theme-dark .sbtw-table tbody td { color: #d7deea !important; background: #273145 !important; border-color: #3a4760 !important; }
         [data-theme="dark"] .sbtw-table tbody tr:hover td, [data-bs-theme="dark"] .sbtw-table tbody tr:hover td, body.dark-theme .sbtw-table tbody tr:hover td, body.dark-mode .sbtw-table tbody tr:hover td, body.dark .sbtw-table tbody tr:hover td, html.dark .sbtw-table tbody tr:hover td, .theme-dark .sbtw-table tbody tr:hover td { background: #303c52 !important; }
         [data-theme="dark"] .sbtw-student-name, [data-theme="dark"] .sbtw-count, [data-bs-theme="dark"] .sbtw-student-name, [data-bs-theme="dark"] .sbtw-count, body.dark-theme .sbtw-student-name, body.dark-theme .sbtw-count, body.dark-mode .sbtw-student-name, body.dark-mode .sbtw-count, body.dark .sbtw-student-name, body.dark .sbtw-count, html.dark .sbtw-student-name, html.dark .sbtw-count, .theme-dark .sbtw-student-name, .theme-dark .sbtw-count { color: #f8fafc !important; }
+        [data-theme="dark"] .sbtw-coverage-summary, [data-bs-theme="dark"] .sbtw-coverage-summary, body.dark-theme .sbtw-coverage-summary, body.dark-mode .sbtw-coverage-summary, body.dark .sbtw-coverage-summary, html.dark .sbtw-coverage-summary, .theme-dark .sbtw-coverage-summary { color: #f8fafc !important; }
+        [data-theme="dark"] .sbtw-rebook-badge, [data-bs-theme="dark"] .sbtw-rebook-badge, body.dark-theme .sbtw-rebook-badge, body.dark-mode .sbtw-rebook-badge, body.dark .sbtw-rebook-badge, html.dark .sbtw-rebook-badge, .theme-dark .sbtw-rebook-badge { color: #fecaca !important; background: #4a2428 !important; border-color: #7f3037 !important; }
+        [data-theme="dark"] .sbtw-covered-badge, [data-bs-theme="dark"] .sbtw-covered-badge, body.dark-theme .sbtw-covered-badge, body.dark-mode .sbtw-covered-badge, body.dark .sbtw-covered-badge, html.dark .sbtw-covered-badge, .theme-dark .sbtw-covered-badge { color: #bbf7d0 !important; background: #1e4536 !important; border-color: #2b6b52 !important; }
         [data-theme="dark"] .sbtw-chip, [data-bs-theme="dark"] .sbtw-chip, body.dark-theme .sbtw-chip, body.dark-mode .sbtw-chip, body.dark .sbtw-chip, html.dark .sbtw-chip, .theme-dark .sbtw-chip { color: #d7deea !important; background: #202a3b !important; border-color: #46536b !important; }
         [data-theme="dark"] .sbtw-modal, [data-bs-theme="dark"] .sbtw-modal, body.dark-theme .sbtw-modal, body.dark-mode .sbtw-modal, body.dark .sbtw-modal, html.dark .sbtw-modal, .theme-dark .sbtw-modal { color: #e5e7eb !important; background: #273145 !important; border-color: #3a4760 !important; }
         [data-theme="dark"] .sbtw-modal-header, [data-bs-theme="dark"] .sbtw-modal-header, body.dark-theme .sbtw-modal-header, body.dark-mode .sbtw-modal-header, body.dark .sbtw-modal-header, html.dark .sbtw-modal-header, .theme-dark .sbtw-modal-header { color: #f8fafc !important; background: #202a3b !important; border-color: #3a4760 !important; }
@@ -1156,14 +1405,35 @@ const StudentBookingTrackerLayer = () => {
                             <h5 className="sbtw-title mb-1">Student Booking Tracker</h5>
                             <p className="sbtw-muted mb-0">Dates and slots are shown in Asia/Dubai timezone.</p>
                         </div>
-                        <button type="button" className="btn btn-primary d-inline-flex align-items-center gap-2" onClick={fetchBookings} disabled={loading}>
-                            <Icon icon={loading ? "svg-spinners:3-dots-fade" : "mdi:refresh"} />
-                            Refresh
-                        </button>
+                        <div className="d-flex flex-wrap align-items-center gap-2">
+                            <button
+                                type="button"
+                                className="btn btn-success d-inline-flex align-items-center gap-2"
+                                onClick={exportToExcel}
+                                disabled={loading || !filteredRows.length}
+                            >
+                                <Icon icon="mdi:file-excel-outline" />
+                                Excel Export
+                            </button>
+                            <button
+                                type="button"
+                                className="btn btn-danger d-inline-flex align-items-center gap-2"
+                                onClick={exportToPDF}
+                                disabled={loading || !filteredRows.length}
+                            >
+                                <Icon icon="mdi:file-pdf-box" />
+                                PDF Export
+                            </button>
+                            <button type="button" className="btn btn-primary d-inline-flex align-items-center gap-2" onClick={fetchBookings} disabled={loading}>
+                                <Icon icon={loading ? "svg-spinners:3-dots-fade" : "mdi:refresh"} />
+                                Refresh
+                            </button>
+                        </div>
                     </div>
 
                     <div className="row g-3 mb-4">
                         <SummaryCard icon="mdi:account-group-outline" label="Tracked Students" value={metrics.students} tone="blue" />
+                        <SummaryCard icon="mdi:alert-circle-outline" label="Subjects Needing Rebooking" value={metrics.subjectsNeedingRebooking} tone="red" />
                         {/* <SummaryCard icon="mdi:calendar-check-outline" label="Active Rows" value={metrics.activeRows} tone="green" /> */}
                         {/* <SummaryCard icon="mdi:alert-circle-outline" label="Need Attention" value={metrics.needsAttention} tone="red" /> */}
                         {/* <SummaryCard icon="mdi:calendar-clock-outline" label="Upcoming Soon" value={metrics.upcomingSoon} tone="orange" /> */}
@@ -1181,7 +1451,7 @@ const StudentBookingTrackerLayer = () => {
                         </div>
 
                         <div className="row g-3">
-                            <div className="col-xl-6 col-lg-6">
+                            <div className="col-xl-4 col-lg-6">
                                 <label htmlFor="tracker-search">Search</label>
                                 <div className="input-group">
                                     <span className="input-group-text sbtw-input-group-text">
@@ -1248,6 +1518,48 @@ const StudentBookingTrackerLayer = () => {
                                     ))}
                                 </select>
                             </div>
+
+                            <div className="col-xl-2 col-lg-3 col-md-4">
+                                <label htmlFor="tracker-upcoming-count">Upcoming Count</label>
+                                <select
+                                    id="tracker-upcoming-count"
+                                    className="form-select sbtw-select"
+                                    value={upcomingCountFilter}
+                                    onChange={(event) => setUpcomingCountFilter(event.target.value)}
+                                >
+                                    <option value="">All Counts</option>
+                                    {upcomingCountOptions.map((count) => (
+                                        <option key={count} value={count}>{count} upcoming</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="col-xl-2 col-lg-3 col-md-4">
+                                <label htmlFor="tracker-zero-upcoming">Zero Upcoming</label>
+                                <select
+                                    id="tracker-zero-upcoming"
+                                    className="form-select sbtw-select"
+                                    value={zeroUpcomingFilter}
+                                    onChange={(event) => setZeroUpcomingFilter(event.target.value)}
+                                >
+                                    <option value="all">Include Zero</option>
+                                    <option value="zero_only">Zero Only</option>
+                                    <option value="exclude_zero">Exclude Zero</option>
+                                </select>
+                            </div>
+
+                            <div className="col-xl-2 col-lg-3 col-md-4">
+                                <label htmlFor="tracker-upcoming-sort">Sort by Upcoming</label>
+                                <select
+                                    id="tracker-upcoming-sort"
+                                    className="form-select sbtw-select"
+                                    value={upcomingSortOrder}
+                                    onChange={(event) => setUpcomingSortOrder(event.target.value)}
+                                >
+                                    <option value="ascending">Fewest First</option>
+                                    <option value="descending">Most First</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
 
@@ -1260,6 +1572,7 @@ const StudentBookingTrackerLayer = () => {
                         </div>
                     ) : (
                         <>
+                            <HorizontalScrollHint />
                             <div className="table-responsive sbtw-table-wrap">
                                 <table className="table bordered-table mb-0 sbtw-table">
                                     <thead>
@@ -1290,9 +1603,23 @@ const StudentBookingTrackerLayer = () => {
                                                         <div className="sbtw-student-name">{row.student.name}</div>
                                                         <div className="sbtw-subtext">{row.student.username || row.student.email || `ID: ${row.student.id || "-"}`}</div>
                                                     </td>
-                                                    <td>
-                                                        <div className="sbtw-student-name">{row.subjects.length} subject{row.subjects.length === 1 ? "" : "s"}</div>
-                                                        <div className="sbtw-subtext">{row.teachers.length} teacher{row.teachers.length === 1 ? "" : "s"} · see Details</div>
+                                                    <td className="sbtw-coverage-cell">
+                                                        <div className="sbtw-coverage-summary">
+                                                            <span>{row.subjects.length} subject{row.subjects.length === 1 ? "" : "s"}</span>
+                                                            <span className="sbtw-coverage-divider" aria-hidden="true" />
+                                                            <span>{row.teachers.length} current teacher{row.teachers.length === 1 ? "" : "s"}</span>
+                                                        </div>
+                                                        {row.needsRebookingSubjects.length ? (
+                                                            <span className="sbtw-rebook-badge">
+                                                                <Icon icon="mdi:alert-circle-outline" />
+                                                                {row.needsRebookingSubjects.length} to rebook
+                                                            </span>
+                                                        ) : (
+                                                            <span className="sbtw-covered-badge">
+                                                                <Icon icon="mdi:check-circle-outline" />
+                                                                All subjects covered
+                                                            </span>
+                                                        )}
                                                     </td>
                                                     <td className="text-center"><span className="sbtw-count">{row.totalBookings}</span></td>
                                                     <td className="text-center">
@@ -1319,7 +1646,7 @@ const StudentBookingTrackerLayer = () => {
                                                     <td><StatusBadge status={row.status} /></td>
                                                     <td>
                                                         <button type="button" className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1" onClick={() => setSelectedRow(row)}>
-                                                            <Icon icon="mdi:clipboard-text-search-outline" /> Logs
+                                                            <Icon icon="mdi:clipboard-text-search-outline" /> Details
                                                         </button>
                                                     </td>
                                                 </tr>
