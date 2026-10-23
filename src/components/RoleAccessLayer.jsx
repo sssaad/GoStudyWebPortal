@@ -1061,6 +1061,35 @@ const RoleAccessLayer = () => {
     setRebookSourceBooking({
       ...item,
 
+      // Normalize the original one-to-one session values before they enter
+      // the manual modal. All Bookings can return either snake_case or
+      // camelCase keys depending on the source query.
+      studentid:
+        item?.studentid ||
+        item?.student_id ||
+        item?.studentId ||
+        item?.userid ||
+        item?.user_id ||
+        "",
+
+      teacherid:
+        item?.teacherid ||
+        item?.teacher_id ||
+        item?.teacherId ||
+        "",
+
+      subjectid:
+        item?.subjectid ||
+        item?.subject_id ||
+        item?.subjectId ||
+        "",
+
+      subjectname:
+        item?.subjectname ||
+        item?.subject_name ||
+        item?.subjectName ||
+        getSubjectName(item),
+
       rebook_admin_date:
         rebookDate,
 

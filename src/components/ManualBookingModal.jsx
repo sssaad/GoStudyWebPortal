@@ -9,6 +9,26 @@ const ADMIN_TIMEZONE = "Asia/Dubai";
 // ---------------- helpers ----------------
 const norm = (v) => String(v ?? "").toLowerCase().trim();
 
+const firstFilledValue = (...values) => {
+  const value = values.find(
+    (item) => String(item ?? "").trim() !== ""
+  );
+
+  return String(value ?? "").trim();
+};
+
+const normalizeAmountForInput = (value) => {
+  const rawAmount = String(value ?? "").replace(/,/g, "").trim();
+
+  if (!rawAmount) {
+    return "";
+  }
+
+  const amountNumber = Number(rawAmount);
+
+  return Number.isFinite(amountNumber) ? String(amountNumber) : rawAmount;
+};
+
 const toHHMM = (t) => {
   const s = String(t || "");
   const m = moment(s, ["HH:mm:ss.SSSSSS", "HH:mm:ss", "HH:mm"], true);
@@ -567,6 +587,7 @@ const ManualBookingModal = ({
   const schedRefB = useRef(null);
   const bookingSubmitLockRef = useRef(false);
   const rebookPrefillRef = useRef(null);
+  const teacherProfileRequestRef = useRef(0);
 
   // ---------------- Entitlements (Block + Subscription) ----------------
   const [blockInfo, setBlockInfo] = useState({ hasActive: false });
@@ -929,24 +950,31 @@ const ManualBookingModal = ({
   useEffect(() => {
     if (!isOpen) return;
 
-    const rebookStudentId = String(
-      initialBooking?.studentid ??
-      initialBooking?.student_id ??
-      initialBooking?.userid ??
-      ""
-    ).trim();
+    const rebookStudentId = firstFilledValue(
+      initialBooking?.studentid,
+      initialBooking?.student_id,
+      initialBooking?.studentId,
+      initialBooking?.userid,
+      initialBooking?.user_id
+    );
 
-    const rebookTeacherId = String(
-      initialBooking?.teacherid ??
-      initialBooking?.teacher_id ??
-      ""
-    ).trim();
+    const rebookTeacherId = firstFilledValue(
+      initialBooking?.teacherid,
+      initialBooking?.teacher_id,
+      initialBooking?.teacherId
+    );
 
-    const rebookSubjectId = String(
-      initialBooking?.subjectid ??
-      initialBooking?.subject_id ??
-      ""
-    ).trim();
+    const rebookSubjectId = firstFilledValue(
+      initialBooking?.subjectid,
+      initialBooking?.subject_id,
+      initialBooking?.subjectId
+    );
+
+    const rebookSubjectName = firstFilledValue(
+      initialBooking?.subjectname,
+      initialBooking?.subject_name,
+      initialBooking?.subjectName
+    );
 
     const rawPaymentType = String(
       initialBooking?.payment_type ??
@@ -990,18 +1018,18 @@ const ManualBookingModal = ({
       initialBooking?.fees ??
       "";
 
-    const rebookAmount = String(
-      rawAmount ?? ""
-    )
-      .replace(/,/g, "")
-      .trim();
+   const rebookAmount = normalizeAmountForInput(rawAmount);
 
     rebookPrefillRef.current = rebookTeacherId
       ? {
         teacherId: rebookTeacherId,
         subjectId: rebookSubjectId,
+        subjectName: rebookSubjectName,
       }
       : null;
+
+    // Invalidate a profile request left over from a previously closed modal.
+    teacherProfileRequestRef.current += 1;
 
     setStudentId(rebookStudentId);
     setTeacherId(rebookTeacherId);
@@ -1235,6 +1263,10 @@ const ManualBookingModal = ({
 
   // ---------------- teacher_profile on teacher select ----------------
   const fetchTeacherProfile = async (tid) => {
+    const requestId = ++teacherProfileRequestRef.current;
+    const isLatestRequest = () =>
+      requestId === teacherProfileRequestRef.current;
+
     setTeacherProfileLoading(true);
     setTeacherProfileError("");
     setTeacherProfileData(null);
@@ -1252,6 +1284,10 @@ const ManualBookingModal = ({
       });
       const json = await resp.json();
 
+      if (!isLatestRequest()) {
+        return;
+      }
+
       if (json?.statusCode !== 200) {
         setTeacherProfileError(json?.message || "Failed to load teacher profile");
         return;
@@ -1262,15 +1298,27 @@ const ManualBookingModal = ({
 
       const subjArr = Array.isArray(data?.teachingprofile_subjects)
         ? data.teachingprofile_subjects
-        : [];
+        : Array.isArray(data?.subjects)
+          ? data.subjects
+          : [];
       const uniq = new Map();
       for (const s of subjArr) {
-        const sid = String(s?.subjectid ?? "").trim();
+        const sid = firstFilledValue(
+          s?.subjectid,
+          s?.subject_id,
+          s?.subjectId,
+          s?.id
+        );
         if (!sid) continue;
         if (!uniq.has(sid)) {
           uniq.set(
             sid,
-            String(s?.subjectname || "").trim() || `Subject ${sid}`
+            firstFilledValue(
+              s?.subjectname,
+              s?.subject_name,
+              s?.subjectName,
+              s?.name
+            ) || `Subject ${sid}`
           );
         }
       }
@@ -1291,15 +1339,27 @@ const ManualBookingModal = ({
         rebookPrefill?.subjectId || ""
       );
 
-      const subjectExists = opts.some(
+      const rebookSubjectName = norm(
+        rebookPrefill?.subjectName
+      );
+
+      const matchingSubjectById = opts.find(
         (subject) =>
           String(subject.value) ===
           rebookSubjectId
       );
 
+      const matchingSubject = matchingSubjectById ||
+        (rebookSubjectName
+          ? opts.find(
+            (subject) =>
+              norm(subject.label) === rebookSubjectName
+          )
+          : null);
+
       setSubjectId(
-        matchingRebookTeacher && subjectExists
-          ? rebookSubjectId
+        matchingRebookTeacher && matchingSubject
+          ? matchingSubject.value
           : ""
       );
 
@@ -1307,15 +1367,27 @@ const ManualBookingModal = ({
         rebookPrefillRef.current = null;
       }
     } catch (e) {
+      if (!isLatestRequest()) {
+        return;
+      }
+
       console.error("fetchTeacherProfile error:", e);
       setTeacherProfileError("Network/API error while loading teacher profile");
     } finally {
-      setTeacherProfileLoading(false);
+      if (isLatestRequest()) {
+        setTeacherProfileLoading(false);
+      }
     }
   };
 
   useEffect(() => {
+    if (!isOpen) {
+      teacherProfileRequestRef.current += 1;
+      return;
+    }
+
     if (!teacherId) {
+      teacherProfileRequestRef.current += 1;
       setTeacherProfileData(null);
       setSubjects([]);
       setSubjectId("");
@@ -1325,8 +1397,9 @@ const ManualBookingModal = ({
       setBookedUtcIntervals([]);
       return;
     }
+
     fetchTeacherProfile(teacherId);
-  }, [teacherId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isOpen, teacherId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---------------- entitlement fetch (block + subscription) ----------------
   const parseDT = (s) =>
@@ -3649,11 +3722,17 @@ const ManualBookingModal = ({
                     className="form-select mbmControl"
                     value={subjectId}
                     onChange={(e) => setSubjectId(e.target.value)}
-                    disabled={!subjects.length || teacherProfileLoading}
+                    disabled={!teacherId || !subjects.length || teacherProfileLoading}
                   >
                     {!subjects.length ? (
                       <option value="">
-                        {teacherId ? "Loading..." : "Select teacher first"}
+                        {!teacherId
+                          ? "Select teacher first"
+                          : teacherProfileLoading
+                            ? "Loading subjects..."
+                            : teacherProfileError
+                              ? "Could not load subjects"
+                              : "No subjects assigned to this teacher"}
                       </option>
                     ) : (
                       <option value="">Select Subject</option>
