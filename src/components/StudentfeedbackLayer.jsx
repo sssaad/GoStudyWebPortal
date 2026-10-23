@@ -1634,13 +1634,79 @@ const StudentfeedbackLayer = () => {
           background:
             rgba(255, 255, 255, .06);
         }
+        
+                .rr-pagination-wrap {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          margin-top: 0;
+          padding: 14px 24px;
+          border-top:
+            1px solid
+            rgba(255, 255, 255, .08);
+          border-radius: 0 0 12px 12px;
+          background: #26364a;
+          color: #f1f5f9;
+          font-size: 14px;
+        }
 
-        @media (max-width: 767px) {
+        .rr-pagination-actions {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-left: auto;
+        }
+
+        .rr-page-button {
+          min-width: 88px;
+          min-height: 40px;
+          padding: 8px 14px;
+          border:
+            1px solid
+            rgba(203, 213, 225, .28);
+          border-radius: 6px;
+          background: transparent;
+          color: #dbe5f0;
+          font-size: 14px;
+          font-weight: 500;
+          transition: all .2s ease;
+        }
+
+        .rr-page-button:hover:not(:disabled) {
+          border-color: #60a5fa;
+          background:
+            rgba(96, 165, 250, .12);
+          color: #fff;
+        }
+
+        .rr-page-button:disabled {
+          cursor: not-allowed;
+          opacity: .42;
+        }
+
+        .rr-page-counter {
+          min-width: 78px;
+          color: #fff;
+          font-weight: 600;
+          text-align: center;
+          white-space: nowrap;
+        }
+
+              @media (max-width: 767px) {
           .rr-pagination-wrap {
             flex-direction: column;
-            align-items:
-              flex-start !important;
-            gap: 12px;
+            align-items: stretch;
+            padding: 14px;
+          }
+
+          .rr-pagination-actions {
+            justify-content: space-between;
+            margin-left: 0;
+          }
+
+          .rr-page-button {
+            min-width: 76px;
           }
         }
       `}</style>
@@ -2112,7 +2178,7 @@ const StudentfeedbackLayer = () => {
               </table>
             </div>
 
-            <div className="rr-pagination-wrap d-flex justify-content-between align-items-center mt-3 px-3 pb-3">
+            <div className="rr-pagination-wrap">
               <span>
                 Showing{" "}
                 {filteredSortedRows.length ===
@@ -2131,79 +2197,37 @@ const StudentfeedbackLayer = () => {
                 entries
               </span>
 
-              <ul className="pagination mb-0 flex-wrap">
-                <li
-                  className={`page-item ${currentPage === 1
-                    ? "disabled"
-                    : ""
-                    }`}
+              <div className="rr-pagination-actions">
+                <button
+                  type="button"
+                  className="rr-page-button"
+                  onClick={() =>
+                    setCurrentPage((page) =>
+                      Math.max(1, page - 1)
+                    )
+                  }
+                  disabled={currentPage <= 1}
                 >
-                  <button
-                    type="button"
-                    className="page-link"
-                    onClick={() =>
-                      setCurrentPage(
-                        (page) =>
-                          Math.max(
-                            1,
-                            page - 1
-                          )
-                      )
-                    }
-                  >
-                    Previous
-                  </button>
-                </li>
+                  Previous
+                </button>
 
-                {Array.from({
-                  length: totalPages,
-                }).map((_, index) => (
-                  <li
-                    key={index + 1}
-                    className={`page-item ${currentPage ===
-                      index + 1
-                      ? "active"
-                      : ""
-                      }`}
-                  >
-                    <button
-                      type="button"
-                      className="page-link"
-                      onClick={() =>
-                        setCurrentPage(
-                          index + 1
-                        )
-                      }
-                    >
-                      {index + 1}
-                    </button>
-                  </li>
-                ))}
+                <span className="rr-page-counter">
+                  Page {currentPage} of {totalPages}
+                </span>
 
-                <li
-                  className={`page-item ${currentPage ===
-                    totalPages
-                    ? "disabled"
-                    : ""
-                    }`}
+                <button
+                  type="button"
+                  className="rr-page-button"
+                  onClick={() =>
+                    setCurrentPage((page) =>
+                      Math.min(totalPages, page + 1)
+                    )
+                  }
+                  disabled={currentPage >= totalPages}
                 >
-                  <button
-                    type="button"
-                    className="page-link"
-                    onClick={() =>
-                      setCurrentPage(
-                        (page) =>
-                          Math.min(
-                            totalPages,
-                            page + 1
-                          )
-                      )
-                    }
-                  >
-                    Next
-                  </button>
-                </li>
-              </ul>
+                  Next
+                </button>
+              </div>
             </div>
           </div>
         </div>

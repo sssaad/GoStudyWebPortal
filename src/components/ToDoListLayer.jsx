@@ -783,20 +783,83 @@ const styles = `
   line-height: 1.45;
 }
 
-.todo-page-button {
-  min-width: 36px;
-  height: 36px;
-  padding: 0 10px;
-  border: 1px solid var(--todo-border);
-  color: var(--todo-text);
-  background: var(--todo-card);
-  border-radius: 8px;
+.todo-pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 0;
+  padding: 14px 24px;
+  border-top:
+    1px solid
+    rgba(255, 255, 255, .08);
+  border-radius: 0 0 12px 12px;
+  background: #26364a;
+  color: #f1f5f9;
+  font-size: 14px;
 }
 
-.todo-page-button.active {
-  color: #ffffff;
-  background: #487fff;
-  border-color: #487fff;
+.todo-pagination-summary {
+  color: #f1f5f9;
+}
+
+.todo-pagination-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+
+.todo-page-button {
+  min-width: 88px;
+  min-height: 40px;
+  padding: 8px 14px;
+  border:
+    1px solid
+    rgba(203, 213, 225, .28);
+  border-radius: 6px;
+  background: transparent;
+  color: #dbe5f0;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all .2s ease;
+}
+
+.todo-page-button:hover:not(:disabled) {
+  border-color: #60a5fa;
+  background:
+    rgba(96, 165, 250, .12);
+  color: #fff;
+}
+
+.todo-page-button:disabled {
+  cursor: not-allowed;
+  opacity: .42;
+}
+
+.todo-page-counter {
+  min-width: 78px;
+  color: #fff;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+}
+
+@media (max-width: 575.98px) {
+  .todo-pagination-bar {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 14px;
+  }
+
+  .todo-pagination-actions {
+    justify-content: space-between;
+    margin-left: 0;
+  }
+
+  .todo-page-button {
+    min-width: 76px;
+  }
 }
 
 .todo-empty {
@@ -875,26 +938,26 @@ const TaskActionModal = ({
   const title = isComplete
     ? "Complete Task"
     : isReopen
-    ? "Reopen Task"
-    : "Delete Task";
+      ? "Reopen Task"
+      : "Delete Task";
 
   const description = isComplete
     ? "Confirm who completed this task."
     : isReopen
-    ? "Confirm who is reopening this task."
-    : "This task will be removed from the active To Do List.";
+      ? "Confirm who is reopening this task."
+      : "This task will be deleted.";
 
   const fieldLabel = isComplete
     ? "Completed By"
     : isReopen
-    ? "Reopened By"
-    : "Deleted By";
+      ? "Reopened By"
+      : "Deleted By";
 
   const icon = isComplete
     ? "solar:check-circle-bold-duotone"
     : isReopen
-    ? "solar:restart-bold-duotone"
-    : "solar:trash-bin-trash-bold-duotone";
+      ? "solar:restart-bold-duotone"
+      : "solar:trash-bin-trash-bold-duotone";
 
   const iconClass = isComplete ? "complete" : isReopen ? "reopen" : "delete";
 
@@ -905,8 +968,8 @@ const TaskActionModal = ({
   const confirmText = isComplete
     ? "Complete Task"
     : isReopen
-    ? "Reopen Task"
-    : "Delete Task";
+      ? "Reopen Task"
+      : "Delete Task";
 
   const submit = (event) => {
     event.preventDefault();
@@ -968,13 +1031,12 @@ const TaskActionModal = ({
 
               <button
                 type="submit"
-                className={`btn px-4 ${
-                  isDelete
-                    ? "todo-action-confirm-danger"
-                    : isComplete
+                className={`btn px-4 ${isDelete
+                  ? "todo-action-confirm-danger"
+                  : isComplete
                     ? "todo-action-confirm-success"
                     : "btn-primary"
-                }`}
+                  }`}
                 disabled={!actorName || saving}
               >
                 {saving ? (
@@ -1045,7 +1107,7 @@ const EditTaskModal = ({ task, open, onClose, onSave, saving }) => {
           <div>
             <h5 className="fw-bold mb-1">Edit Task</h5>
             <div className="todo-muted" style={{ fontSize: 12 }}>
-              Update task details without changing the original creator.
+              Update task details.
             </div>
           </div>
 
@@ -1189,11 +1251,10 @@ const ViewTaskModal = ({ task, open, onClose }) => {
             <div className="col-md-4">
               <DetailCard label="Status">
                 <span
-                  className={`todo-status ${
-                    task.is_completed
-                      ? "todo-status-completed"
-                      : "todo-status-pending"
-                  }`}
+                  className={`todo-status ${task.is_completed
+                    ? "todo-status-completed"
+                    : "todo-status-pending"
+                    }`}
                 >
                   <Icon
                     icon={
@@ -1417,17 +1478,6 @@ const ToDoListLayer = () => {
   const startIndex = (safePage - 1) * itemsPerPage;
   const visibleTasks = filteredTasks.slice(startIndex, startIndex + itemsPerPage);
 
-  const paginationPages = useMemo(() => {
-    if (totalPages <= 7) {
-      return Array.from({ length: totalPages }, (_, i) => i + 1);
-    }
-
-    const pages = new Set([1, totalPages, safePage - 1, safePage, safePage + 1]);
-    return [...pages]
-      .filter((page) => page >= 1 && page <= totalPages)
-      .sort((a, b) => a - b);
-  }, [totalPages, safePage]);
-
   const resetFilters = () => {
     setSearchTerm("");
     setAssigneeFilter("");
@@ -1587,8 +1637,8 @@ const ToDoListLayer = () => {
         isDelete
           ? "Task Deleted"
           : nextValue
-          ? "Task Completed"
-          : "Task Reopened"
+            ? "Task Completed"
+            : "Task Reopened"
       );
     } catch (error) {
       console.error("Task Action Error:", error);
@@ -1689,7 +1739,7 @@ const ToDoListLayer = () => {
                 }
               />
               <div className="todo-small">
-                Long text is supported. The table shows a short preview and View shows the full task.
+
               </div>
             </div>
 
@@ -1912,9 +1962,8 @@ const ToDoListLayer = () => {
                         <td className="todo-col-done">
                           <button
                             type="button"
-                            className={`todo-complete-box ${
-                              task.is_completed ? "checked" : ""
-                            }`}
+                            className={`todo-complete-box ${task.is_completed ? "checked" : ""
+                              }`}
                             title={task.is_completed ? "Reopen task" : "Mark task complete"}
                             aria-label={
                               task.is_completed ? "Reopen task" : "Mark task complete"
@@ -1938,9 +1987,8 @@ const ToDoListLayer = () => {
 
                         <td className="todo-col-task">
                           <div
-                            className={`todo-task-title ${
-                              task.is_completed ? "completed" : ""
-                            }`}
+                            className={`todo-task-title ${task.is_completed ? "completed" : ""
+                              }`}
                             title={task.task_text}
                           >
                             {task.task_text}
@@ -1985,11 +2033,10 @@ const ToDoListLayer = () => {
 
                         <td className="todo-col-status">
                           <span
-                            className={`todo-status ${
-                              task.is_completed
-                                ? "todo-status-completed"
-                                : "todo-status-pending"
-                            }`}
+                            className={`todo-status ${task.is_completed
+                              ? "todo-status-completed"
+                              : "todo-status-pending"
+                              }`}
                           >
                             <Icon
                               icon={
@@ -2069,50 +2116,45 @@ const ToDoListLayer = () => {
             </table>
           </div>
 
-          <div className="d-flex justify-content-between align-items-center flex-wrap gap-3 mt-3">
-            <div className="todo-muted">
+          <div className="todo-pagination-bar">
+            <div className="todo-pagination-summary">
               Showing {filteredTasks.length === 0 ? 0 : startIndex + 1} to{" "}
-              {Math.min(startIndex + itemsPerPage, filteredTasks.length)} of{" "}
+              {Math.min(
+                startIndex + itemsPerPage,
+                filteredTasks.length
+              )} of{" "}
               {filteredTasks.length} tasks
             </div>
 
-            <div className="d-flex gap-2 align-items-center flex-wrap">
+            <div className="todo-pagination-actions">
               <button
                 type="button"
                 className="todo-page-button"
                 disabled={safePage <= 1}
-                onClick={() => setCurrentPage(Math.max(1, safePage - 1))}
+                onClick={() =>
+                  setCurrentPage(
+                    Math.max(1, safePage - 1)
+                  )
+                }
               >
-                <Icon icon="solar:alt-arrow-left-linear" />
+                Previous
               </button>
 
-              {paginationPages.map((page, index) => {
-                const previous = paginationPages[index - 1];
-                const showGap = previous && page - previous > 1;
-
-                return (
-                  <React.Fragment key={page}>
-                    {showGap && <span className="todo-muted px-1">...</span>}
-                    <button
-                      type="button"
-                      className={`todo-page-button ${
-                        safePage === page ? "active" : ""
-                      }`}
-                      onClick={() => setCurrentPage(page)}
-                    >
-                      {page}
-                    </button>
-                  </React.Fragment>
-                );
-              })}
+              <span className="todo-page-counter">
+                Page {safePage} of {totalPages}
+              </span>
 
               <button
                 type="button"
                 className="todo-page-button"
                 disabled={safePage >= totalPages}
-                onClick={() => setCurrentPage(Math.min(totalPages, safePage + 1))}
+                onClick={() =>
+                  setCurrentPage(
+                    Math.min(totalPages, safePage + 1)
+                  )
+                }
               >
-                <Icon icon="solar:alt-arrow-right-linear" />
+                Next
               </button>
             </div>
           </div>

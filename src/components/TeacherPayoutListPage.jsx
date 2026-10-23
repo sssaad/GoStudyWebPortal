@@ -382,7 +382,7 @@ const TeacherPayoutListPage = () => {
     }
   };
 
-  const fetchTeacherPayouts = async () => {
+  const fetchTeacherPayouts = async (preserveCurrentPage = false) => {
     try {
       if (fetchAbortRef.current) {
         fetchAbortRef.current.abort();
@@ -832,7 +832,10 @@ const TeacherPayoutListPage = () => {
       }
 
       setRows(mappedRows);
-      setCurrentPage(1);
+
+      if (!preserveCurrentPage) {
+        setCurrentPage(1);
+      }
     } catch (error) {
       if (
         error?.name ===
@@ -1127,7 +1130,7 @@ const TeacherPayoutListPage = () => {
         return;
       }
 
-      await fetchTeacherPayouts();
+      await fetchTeacherPayouts(true);
       await fetchTotalRevenue();
 
       Swal.fire({

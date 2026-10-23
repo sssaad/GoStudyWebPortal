@@ -35,7 +35,7 @@ const YEAR_PRICING = {
   "Year 9": 400,
   "Year 10": 450,
   "Year 11": 500,
-  "Year 12": 500,
+  "Year 12": 550,
   "Year 13": 550,
 };
 
