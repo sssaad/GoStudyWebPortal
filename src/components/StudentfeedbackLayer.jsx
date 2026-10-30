@@ -137,6 +137,33 @@ const buildDubaiDateTimeTs = (rawDate, rawTime) => {
     .valueOf();
 };
 
+const buildDubaiSessionEndTs = (
+  rawDate,
+  rawStart,
+  rawEnd
+) => {
+  const startTs = buildDubaiDateTimeTs(
+    rawDate,
+    rawStart
+  );
+
+  let endTs = buildDubaiDateTimeTs(
+    rawDate,
+    rawEnd
+  );
+
+  if (!startTs || !endTs) {
+    return 0;
+  }
+
+  // 11:00 PM → 12:00 AM means next Dubai day.
+  if (endTs <= startTs) {
+    endTs = moment(endTs).add(1, "day").valueOf();
+  }
+
+  return endTs;
+};
+
 const hasSessionEndedInDubai = (row) => {
   const sessionEndTs = Number(row?.sessionEndTs || 0);
 
@@ -489,11 +516,11 @@ const StudentfeedbackLayer = () => {
                 rawStart
               ),
 
-              sessionEndTs: buildDubaiDateTimeTs(
+              sessionEndTs: buildDubaiSessionEndTs(
                 rawBookDate,
+                rawStart,
                 rawEnd
               ),
-
               slotStart: formatTime(rawStart),
               slotEnd: formatTime(rawEnd),
 
@@ -629,15 +656,17 @@ const StudentfeedbackLayer = () => {
 
   const filteredSortedRows = useMemo(() => {
     const fromTimestamp = dateFrom
-      ? moment(dateFrom, "YYYY-MM-DD")
-        .startOf("day")
-        .valueOf()
+      ? buildDubaiDateTimeTs(
+        dateFrom,
+        "00:00:00"
+      )
       : null;
 
     const toTimestamp = dateTo
-      ? moment(dateTo, "YYYY-MM-DD")
-        .endOf("day")
-        .valueOf()
+      ? buildDubaiDateTimeTs(
+        dateTo,
+        "23:59:59"
+      )
       : null;
 
     const query = String(search || "")
