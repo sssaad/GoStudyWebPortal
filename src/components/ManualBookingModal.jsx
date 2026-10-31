@@ -555,6 +555,10 @@ const ManualBookingModal = ({
   const [sessionType, setSessionType] = useState("Online");
   const [bookingType, setBookingType] = useState("Manual");
   const [paymentStatus, setPaymentStatus] = useState("Paid");
+  const [teacherPayoutAmount, setTeacherPayoutAmount] = useState("");
+  const [teacherPayoutPaid, setTeacherPayoutPaid] = useState(false);
+  const [teacherPayoutPaidOn, setTeacherPayoutPaidOn] = useState("");
+  const [teacherPayoutMethod, setTeacherPayoutMethod] = useState("");
 
   const [selectedSlot, setSelectedSlot] = useState(null);
 
@@ -1018,7 +1022,7 @@ const ManualBookingModal = ({
       initialBooking?.fees ??
       "";
 
-   const rebookAmount = normalizeAmountForInput(rawAmount);
+    const rebookAmount = normalizeAmountForInput(rawAmount);
 
     rebookPrefillRef.current = rebookTeacherId
       ? {
@@ -1051,6 +1055,12 @@ const ManualBookingModal = ({
     setPaymentStatus(rebookPaymentStatus);
     prevPaymentStatusRef.current = rebookPaymentStatus;
     lastNonFreeAmountRef.current = rebookAmount;
+
+    setTeacherPayoutAmount("");
+    setTeacherPayoutPaid(false);
+    setTeacherPayoutPaidOn("");
+    setTeacherPayoutMethod("");
+
     setCustomSlotError("");
 
     setBookingSubmitting(false);
@@ -1809,7 +1819,7 @@ const ManualBookingModal = ({
       };
     }
 
-       // Online and In-Person sessions can use any valid custom duration.
+    // Online and In-Person sessions can use any valid custom duration.
 
     const hasConflict = (bookedUtcIntervals || []).some((b) =>
       overlaps(
@@ -2497,7 +2507,7 @@ const ManualBookingModal = ({
     return m.isValid() ? m.format("HH:mm:ss") : "";
   };
 
-    useEffect(() => {
+  useEffect(() => {
     setSelectedSlot((previous) =>
       previous?.kind === "custom"
         ? null
@@ -2912,6 +2922,49 @@ const ManualBookingModal = ({
           "The selected slot could not be converted to the student's timezone."
         );
       }
+      const rawTeacherPayout = String(
+        teacherPayoutAmount || ""
+      ).trim();
+
+      let teacherPayoutPayload = null;
+
+      /*
+       * Teacher payout amount is optional.
+       * If blank, normal booking will continue without payout update.
+       */
+      if (isGroup === 0 && rawTeacherPayout !== "") {
+        const parsedTeacherPayout = Number(
+          rawTeacherPayout.replace(/,/g, "")
+        );
+
+        if (
+          !Number.isFinite(parsedTeacherPayout) ||
+          parsedTeacherPayout < 0
+        ) {
+          throw new Error(
+            "Please enter a valid teacher payout amount."
+          );
+        }
+
+        /*
+         * Paid status, paid date and payout method
+         * are all optional.
+         */
+        teacherPayoutPayload = {
+          teacher_payout_amount: Number(
+            parsedTeacherPayout.toFixed(2)
+          ),
+
+          teacher_payout_is_paid:
+            teacherPayoutPaid ? 1 : 0,
+
+          teacher_payout_paid_on:
+            teacherPayoutPaidOn || null,
+
+          teacher_payout_method:
+            teacherPayoutMethod || null,
+        };
+      }
 
       const body = {
         tablename: "bookteacher",
@@ -2953,6 +3006,8 @@ const ManualBookingModal = ({
           normalizeBookingType(
             bookingType
           ),
+
+        ...(teacherPayoutPayload || {}),
       };
 
       console.log(
@@ -3391,6 +3446,16 @@ const ManualBookingModal = ({
               font-weight: 800;
             }
 
+            /* Dark theme: make native Date and Time picker icons visible */
+.mbmCard input[type="date"]::-webkit-calendar-picker-indicator,
+.mbmCard input[type="time"]::-webkit-calendar-picker-indicator{
+  cursor: pointer;
+  opacity: ${isDark ? "0.95" : "1"};
+  filter: ${isDark
+              ? "invert(1) brightness(1.8)"
+              : "none"};
+}
+
             .mbmSS{ position: relative; width: 100%; }
             .mbmSSBtn{
               width:100%;
@@ -3804,6 +3869,115 @@ const ManualBookingModal = ({
                   />
                 </div>
 
+                {selectedSlot?.kind !== "group" ? (
+                  <>
+                    <div className="col-lg-3 col-md-6">
+                      <div className="mbmLabel">
+                        Teacher Payout Amount (AED)
+                      </div>
+
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        className="form-control mbmControl"
+                        placeholder="Optional"
+                        value={teacherPayoutAmount}
+                        onChange={(e) => {
+                          const value = e.target.value;
+
+                          setTeacherPayoutAmount(value);
+
+                          if (value === "") {
+                            setTeacherPayoutPaid(false);
+                            setTeacherPayoutPaidOn("");
+                            setTeacherPayoutMethod("");
+                          }
+                        }}
+                      />
+                    </div>
+
+                    <div className="col-lg-3 col-md-6">
+                      <div className="mbmLabel">Paid?</div>
+
+                      <div
+                        className="mbmSeg"
+                        role="radiogroup"
+                        aria-label="Teacher Payout Status"
+                      >
+                        <button
+                          type="button"
+                          role="radio"
+                          aria-checked={!teacherPayoutPaid}
+                          disabled={!teacherPayoutAmount}
+                          className={`mbmSegBtn ${!teacherPayoutPaid
+                            ? "mbmSegBtnActivePrimary"
+                            : ""
+                            }`}
+                          onClick={() => {
+                            setTeacherPayoutPaid(false);
+                            setTeacherPayoutPaidOn("");
+                          }}
+                        >
+                          Unpaid
+                        </button>
+
+                        <button
+                          type="button"
+                          role="radio"
+                          aria-checked={teacherPayoutPaid}
+                          disabled={!teacherPayoutAmount}
+                          className={`mbmSegBtn ${teacherPayoutPaid
+                            ? "mbmSegBtnActivePrimary"
+                            : ""
+                            }`}
+                          onClick={() => setTeacherPayoutPaid(true)}
+                        >
+                          Paid
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="col-lg-3 col-md-6">
+                      <div className="mbmLabel">Paid on</div>
+
+                      <input
+                        type="date"
+                        className="form-control mbmControl"
+                        value={teacherPayoutPaidOn}
+                        disabled={
+                          !teacherPayoutAmount ||
+                          !teacherPayoutPaid
+                        }
+                        onChange={(e) =>
+                          setTeacherPayoutPaidOn(e.target.value)
+                        }
+                      />
+                    </div>
+
+                    <div className="col-lg-3 col-md-6">
+                      <div className="mbmLabel">Payout Method</div>
+
+                      <select
+                        className="form-select mbmControl"
+                        value={teacherPayoutMethod}
+                        disabled={!teacherPayoutAmount}
+                        onChange={(e) =>
+                          setTeacherPayoutMethod(e.target.value)
+                        }
+                      >
+                        <option value="">Select</option>
+                        <option value="Cash">Cash</option>
+                        <option value="Bank">Bank</option>
+                        <option value="Online">Online</option>
+                        <option value="UK Bank Account">
+                          UK Bank Account
+                        </option>
+                      </select>
+                    </div>
+                  </>
+                ) : null}
+
                 <div className="col-lg-3 col-md-6">
                   <div className="mbmLabel">Session Type</div>
                   <select
@@ -3945,7 +4119,7 @@ const ManualBookingModal = ({
                       type="time"
                       className="form-control mbmControl"
                       value={customSlotEnd}
-                                            title="Select end time"
+                      title="Select end time"
                       onChange={(e) => {
                         setCustomSlotError("");
                         setCustomSlotEnd(e.target.value);
