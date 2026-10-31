@@ -28,7 +28,7 @@ const ADD_PROFILE_URL =
   "https://api.learnyourlanguage.org/RestController_Thirdparty.php?view=add_user_profile";
 
 const DEFAULT_AVATAR =
-  "https://lylassets.s3.eu-north-1.amazonaws.com/uploads/person-dummy.jpg";
+  "https://gostudy.ae/assets/person-dummy.jpg";
 
 // ---------------- helpers ----------------
 function splitName(fullname = "") {

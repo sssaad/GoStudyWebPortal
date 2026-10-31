@@ -17,7 +17,7 @@ const headers = {
 };
 
 const DEFAULT_AVATAR =
-  "https://lylassets.s3.eu-north-1.amazonaws.com/uploads/person-dummy.jpg";
+  "https://gostudy.ae/assets/person-dummy.jpg";
 
 const FETCH_PROFILE_URL =
   "https://api.learnyourlanguage.org/RestController_Thirdparty.php?view=teacher_profile";
