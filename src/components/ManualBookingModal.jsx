@@ -3434,6 +3434,63 @@ const ManualBookingModal = ({
 
             .mbmLabel{ font-weight: 800; font-size: 13px; margin-bottom: 6px; }
 
+            .mbmPayoutPanel{
+  width: 100%;
+  margin: 4px 0 2px;
+  padding: 16px;
+  border-radius: 16px;
+  background: ${isDark
+              ? "linear-gradient(135deg, rgba(59,130,246,0.16), rgba(15,23,42,0.72))"
+              : "linear-gradient(135deg, rgba(13,110,253,0.10), rgba(13,110,253,0.025))"
+            };
+  border: 1px solid ${isDark
+              ? "rgba(96,165,250,0.35)"
+              : "rgba(13,110,253,0.22)"
+            };
+}
+
+.mbmPayoutPanelHeader{
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 14px;
+}
+
+.mbmPayoutPanelIcon{
+  width: 40px;
+  height: 30px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--mbm-primary);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.mbmPayoutPanelTitle{
+  font-size: 15px;
+  font-weight: 900;
+  color: var(--mbm-text);
+}
+
+.mbmPayoutPanelNote{
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--mbm-muted);
+  margin-top: 1px;
+}
+
+/* Show booking/session details before the teacher payout panel */
+.mbmSessionDetails{
+  order: 1;
+}
+
+.mbmPayoutPanelWrap{
+  order: 2;
+}
+
             .mbmControl{
               border-radius: 14px !important;
               border: 1px solid var(--mbm-border) !important;
@@ -3849,7 +3906,7 @@ const ManualBookingModal = ({
                 </div>
 
                 <div className="col-lg-3 col-md-6">
-                  <div className="mbmLabel">Amount</div>
+                  <div className="mbmLabel">Session Amount</div>
                   <input
                     type="text"
                     className="form-control mbmControl"
@@ -3870,115 +3927,135 @@ const ManualBookingModal = ({
                 </div>
 
                 {selectedSlot?.kind !== "group" ? (
-                  <>
-                    <div className="col-lg-3 col-md-6">
-                      <div className="mbmLabel">
-                        Teacher Payout Amount (AED)
+                  <div className="col-12 mbmPayoutPanelWrap">
+                    <div className="mbmPayoutPanel">
+                      <div className="mbmPayoutPanelHeader">
+                        <div className="mbmPayoutPanelIcon">AED</div>
+
+                        <div>
+                          <div className="mbmPayoutPanelTitle">
+                            Teacher Payout Details
+                          </div>
+
+                          {/* <div className="mbmPayoutPanelNote">
+                            Optional payout information for the assigned teacher
+                          </div> */}
+                        </div>
                       </div>
 
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        className="form-control mbmControl"
-                        placeholder="Optional"
-                        value={teacherPayoutAmount}
-                        onChange={(e) => {
-                          const value = e.target.value;
+                      <div className="row g-3">
+                        <div className="col-lg-3 col-md-6">
+                          <div className="mbmLabel">
+                            Teacher Payout Amount (AED)
+                          </div>
 
-                          setTeacherPayoutAmount(value);
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            className="form-control mbmControl"
+                            placeholder="Optional"
+                            value={teacherPayoutAmount}
+                            onChange={(e) => {
+                              const value = e.target.value;
 
-                          if (value === "") {
-                            setTeacherPayoutPaid(false);
-                            setTeacherPayoutPaidOn("");
-                            setTeacherPayoutMethod("");
-                          }
-                        }}
-                      />
-                    </div>
+                              setTeacherPayoutAmount(value);
 
-                    <div className="col-lg-3 col-md-6">
-                      <div className="mbmLabel">Paid?</div>
+                              if (value === "") {
+                                setTeacherPayoutPaid(false);
+                                setTeacherPayoutPaidOn("");
+                                setTeacherPayoutMethod("");
+                              }
+                            }}
+                          />
+                        </div>
 
-                      <div
-                        className="mbmSeg"
-                        role="radiogroup"
-                        aria-label="Teacher Payout Status"
-                      >
-                        <button
-                          type="button"
-                          role="radio"
-                          aria-checked={!teacherPayoutPaid}
-                          disabled={!teacherPayoutAmount}
-                          className={`mbmSegBtn ${!teacherPayoutPaid
-                            ? "mbmSegBtnActivePrimary"
-                            : ""
-                            }`}
-                          onClick={() => {
-                            setTeacherPayoutPaid(false);
-                            setTeacherPayoutPaidOn("");
-                          }}
-                        >
-                          Unpaid
-                        </button>
+                        <div className="col-lg-3 col-md-6">
+                          <div className="mbmLabel">Teacher Paid?</div>
 
-                        <button
-                          type="button"
-                          role="radio"
-                          aria-checked={teacherPayoutPaid}
-                          disabled={!teacherPayoutAmount}
-                          className={`mbmSegBtn ${teacherPayoutPaid
-                            ? "mbmSegBtnActivePrimary"
-                            : ""
-                            }`}
-                          onClick={() => setTeacherPayoutPaid(true)}
-                        >
-                          Paid
-                        </button>
+                          <div
+                            className="mbmSeg"
+                            role="radiogroup"
+                            aria-label="Teacher Paid Status"
+                          >
+                            <button
+                              type="button"
+                              role="radio"
+                              aria-checked={!teacherPayoutPaid}
+                              disabled={!teacherPayoutAmount}
+                              className={`mbmSegBtn ${!teacherPayoutPaid
+                                ? "mbmSegBtnActivePrimary"
+                                : ""
+                                }`}
+                              onClick={() => {
+                                setTeacherPayoutPaid(false);
+                                setTeacherPayoutPaidOn("");
+                              }}
+                            >
+                              Unpaid
+                            </button>
+
+                            <button
+                              type="button"
+                              role="radio"
+                              aria-checked={teacherPayoutPaid}
+                              disabled={!teacherPayoutAmount}
+                              className={`mbmSegBtn ${teacherPayoutPaid
+                                ? "mbmSegBtnActivePrimary"
+                                : ""
+                                }`}
+                              onClick={() => setTeacherPayoutPaid(true)}
+                            >
+                              Paid
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="col-lg-3 col-md-6">
+                          <div className="mbmLabel">Teacher Pay Date</div>
+
+                          <input
+                            type="date"
+                            className="form-control mbmControl"
+                            value={teacherPayoutPaidOn}
+                            disabled={
+                              !teacherPayoutAmount ||
+                              !teacherPayoutPaid
+                            }
+                            onChange={(e) =>
+                              setTeacherPayoutPaidOn(e.target.value)
+                            }
+                          />
+                        </div>
+
+                        <div className="col-lg-3 col-md-6">
+                          <div className="mbmLabel">
+                            Teacher Payout Method
+                          </div>
+
+                          <select
+                            className="form-select mbmControl"
+                            value={teacherPayoutMethod}
+                            disabled={!teacherPayoutAmount}
+                            onChange={(e) =>
+                              setTeacherPayoutMethod(e.target.value)
+                            }
+                          >
+                            <option value="">Select</option>
+                            <option value="Cash">Cash</option>
+                            <option value="Bank">Bank</option>
+                            <option value="Online">Online</option>
+                            <option value="UK Bank Account">
+                              UK Bank Account
+                            </option>
+                          </select>
+                        </div>
                       </div>
                     </div>
-
-                    <div className="col-lg-3 col-md-6">
-                      <div className="mbmLabel">Paid on</div>
-
-                      <input
-                        type="date"
-                        className="form-control mbmControl"
-                        value={teacherPayoutPaidOn}
-                        disabled={
-                          !teacherPayoutAmount ||
-                          !teacherPayoutPaid
-                        }
-                        onChange={(e) =>
-                          setTeacherPayoutPaidOn(e.target.value)
-                        }
-                      />
-                    </div>
-
-                    <div className="col-lg-3 col-md-6">
-                      <div className="mbmLabel">Payout Method</div>
-
-                      <select
-                        className="form-select mbmControl"
-                        value={teacherPayoutMethod}
-                        disabled={!teacherPayoutAmount}
-                        onChange={(e) =>
-                          setTeacherPayoutMethod(e.target.value)
-                        }
-                      >
-                        <option value="">Select</option>
-                        <option value="Cash">Cash</option>
-                        <option value="Bank">Bank</option>
-                        <option value="Online">Online</option>
-                        <option value="UK Bank Account">
-                          UK Bank Account
-                        </option>
-                      </select>
-                    </div>
-                  </>
+                  </div>
                 ) : null}
 
-                <div className="col-lg-3 col-md-6">
+                <div className="col-lg-3 col-md-6 mbmSessionDetails">
                   <div className="mbmLabel">Session Type</div>
                   <select
                     className="form-select mbmControl"
@@ -3990,7 +4067,7 @@ const ManualBookingModal = ({
                   </select>
                 </div>
 
-                <div className="col-lg-3 col-md-6">
+                <div className="col-lg-3 col-md-6 mbmSessionDetails">
                   <div className="mbmLabel">Booking Type</div>
                   <select
                     className="form-select mbmControl"
@@ -4002,8 +4079,8 @@ const ManualBookingModal = ({
                   </select>
                 </div>
 
-                <div className="col-lg-3 col-md-6">
-                  <div className="mbmLabel">Payment Status</div>
+                <div className="col-lg-3 col-md-6 mbmSessionDetails">
+                  <div className="mbmLabel">Session Payment Status</div>
                   <div
                     className="mbmSeg"
                     role="radiogroup"
